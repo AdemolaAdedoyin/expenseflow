@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ApprovalLevel, ApprovalStatus, ExpenseStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/decorators/current-user.decorator';
@@ -44,7 +49,6 @@ export class ApprovalsService {
       where: {
         id,
         approverId: user.sub,
-        status: ApprovalStatus.PENDING,
         expense: { organizationId: user.organizationId },
       },
       include: {
@@ -58,57 +62,109 @@ export class ApprovalsService {
     });
 
     if (!approval) {
-      throw new NotFoundException('Pending approval not found');
+      throw new NotFoundException('Approval not found');
+    }
+
+    if (approval.status !== ApprovalStatus.PENDING) {
+      throw this.staleApprovalConflict();
+    }
+
+    if (approval.version !== dto.expectedVersion) {
+      throw this.staleApprovalConflict();
+    }
+
+    const expectedExpenseStatus =
+      approval.level === ApprovalLevel.MANAGER
+        ? ExpenseStatus.PENDING_MANAGER
+        : ExpenseStatus.PENDING_FINANCE;
+
+    if (approval.expense.status !== expectedExpenseStatus) {
+      throw this.staleApprovalConflict();
     }
 
     const approved = dto.decision === 'APPROVE';
 
     const result = await this.prisma.$transaction(async (transaction) => {
-      await transaction.approval.update({
-        where: { id },
+      const approvalUpdate = await transaction.approval.updateMany({
+        where: {
+          id,
+          approverId: user.sub,
+          status: ApprovalStatus.PENDING,
+          version: dto.expectedVersion,
+        },
         data: {
           status: approved ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED,
           comment: dto.comment,
           decidedAt: new Date(),
+          version: { increment: 1 },
         },
       });
 
-      if (!approved) {
-        return transaction.expense.update({
-          where: { id: approval.expenseId },
-          data: {
-            status: ExpenseStatus.REJECTED,
-            rejectionReason:
-              dto.comment || `Rejected by ${approval.level.toLowerCase()} approver`,
-            decidedAt: new Date(),
-          },
-        });
+      if (approvalUpdate.count !== 1) {
+        throw this.staleApprovalConflict();
       }
 
-      if (approval.level === ApprovalLevel.MANAGER) {
+      let nextStatus: ExpenseStatus;
+      let rejectionReason: string | undefined;
+      let decidedAt: Date | undefined;
+
+      if (!approved) {
+        nextStatus = ExpenseStatus.REJECTED;
+        rejectionReason =
+          dto.comment || `Rejected by ${approval.level.toLowerCase()} approver`;
+        decidedAt = new Date();
+      } else if (approval.level === ApprovalLevel.MANAGER) {
         const financeApproval = approval.expense.approvals.find(
           (candidate) => candidate.level === ApprovalLevel.FINANCE,
         );
 
         if (financeApproval) {
-          await transaction.approval.update({
-            where: { id: financeApproval.id },
-            data: { status: ApprovalStatus.PENDING },
+          const financeUpdate = await transaction.approval.updateMany({
+            where: {
+              id: financeApproval.id,
+              status: ApprovalStatus.SKIPPED,
+              version: financeApproval.version,
+            },
+            data: {
+              status: ApprovalStatus.PENDING,
+              version: { increment: 1 },
+            },
           });
 
-          return transaction.expense.update({
-            where: { id: approval.expenseId },
-            data: { status: ExpenseStatus.PENDING_FINANCE },
-          });
+          if (financeUpdate.count !== 1) {
+            throw this.staleApprovalConflict();
+          }
+
+          nextStatus = ExpenseStatus.PENDING_FINANCE;
+        } else {
+          nextStatus = ExpenseStatus.APPROVED;
+          decidedAt = new Date();
         }
+      } else {
+        nextStatus = ExpenseStatus.APPROVED;
+        decidedAt = new Date();
       }
 
-      return transaction.expense.update({
-        where: { id: approval.expenseId },
-        data: {
-          status: ExpenseStatus.APPROVED,
-          decidedAt: new Date(),
+      const expenseUpdate = await transaction.expense.updateMany({
+        where: {
+          id: approval.expenseId,
+          status: expectedExpenseStatus,
+          version: approval.expense.version,
         },
+        data: {
+          status: nextStatus,
+          version: { increment: 1 },
+          ...(rejectionReason ? { rejectionReason } : {}),
+          ...(decidedAt ? { decidedAt } : {}),
+        },
+      });
+
+      if (expenseUpdate.count !== 1) {
+        throw this.staleApprovalConflict();
+      }
+
+      return transaction.expense.findUniqueOrThrow({
+        where: { id: approval.expenseId },
       });
     });
 
@@ -121,6 +177,8 @@ export class ApprovalsService {
       metadata: {
         level: approval.level,
         comment: dto.comment,
+        approvalVersion: dto.expectedVersion + 1,
+        expenseVersion: result.version,
       },
     });
 
@@ -138,6 +196,12 @@ export class ApprovalsService {
     }
 
     return result;
+  }
+
+  private staleApprovalConflict() {
+    return new ConflictException(
+      'This approval changed after you loaded it. Refresh the page and try again.',
+    );
   }
 
   private async notifyNextFinanceApprover(expenseId: string) {
