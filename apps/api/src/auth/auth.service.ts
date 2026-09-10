@@ -29,6 +29,33 @@ export class AuthService {
     return this.issueSession(user);
   }
 
+  async loginWithOidcEmail(email: string) {
+    const organizationSlug = this.config.getOrThrow<string>('OIDC_ORGANIZATION_SLUG');
+    const organization = await this.prisma.organization.findUnique({
+      where: { slug: organizationSlug },
+      select: { id: true },
+    });
+
+    if (!organization) {
+      throw new UnauthorizedException('SSO organization is not configured');
+    }
+
+    // I deliberately link SSO only to a pre-existing user in the configured tenant.
+    // This avoids silently provisioning an account or role from untrusted provider claims.
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: email.toLowerCase(),
+        organizationId: organization.id,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('No ExpenseFlow account is linked to this SSO identity');
+    }
+
+    return this.issueSession(user);
+  }
+
   async refresh(refreshToken: string) {
     const tokenHash = this.hashToken(refreshToken);
     const currentSession = await this.prisma.session.findUnique({
