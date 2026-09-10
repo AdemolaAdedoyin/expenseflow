@@ -1,18 +1,12 @@
 import { FormEvent, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
-import { useAuth } from '../App';
+import { LoginResponse } from '../types/auth';
 
-type LoginResponse = {
-  accessToken: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-    role: string;
-    organizationId: string;
+type LocationState = {
+  from?: {
+    pathname?: string;
   };
 };
 
@@ -23,35 +17,26 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError('');
     setIsSubmitting(true);
 
     try {
       const response = await api<LoginResponse>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({
-          email,
-          password,
-        }),
+        body: JSON.stringify({ email, password }),
       });
 
       login(response.accessToken);
 
-      navigate('/', {
-        replace: true,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to sign in';
-
-      setError(message);
+      const state = location.state as LocationState | null;
+      navigate(state?.from?.pathname ?? '/', { replace: true });
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'Unable to sign in');
     } finally {
       setIsSubmitting(false);
     }
@@ -69,9 +54,11 @@ export default function Login() {
         <label>
           Email
           <input
+            type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
+            required
           />
         </label>
 
@@ -80,24 +67,19 @@ export default function Login() {
           <input
             type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(event) => setPassword(event.target.value)}
             autoComplete="current-password"
+            required
           />
         </label>
 
         {error && <div className="error">{error}</div>}
 
-        <button
-          className="primary"
-          type="submit"
-          disabled={isSubmitting}
-        >
+        <button className="primary" type="submit" disabled={isSubmitting}>
           {isSubmitting ? 'Signing in...' : 'Sign in'}
         </button>
 
-        <small>
-          Demo: employee@demo.com / Password123!
-        </small>
+        <small>Demo: employee@demo.com / Password123!</small>
       </form>
     </div>
   );

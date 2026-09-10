@@ -8,12 +8,17 @@
     "build": "npm run build -w @expenseflow/api && npm run build -w @expenseflow/web",
     "test": "npm run test -w @expenseflow/api",
     "lint": "npm run lint -w @expenseflow/api && npm run lint -w @expenseflow/web",
+    "format": "npx --yes prettier@3.6.2 --write .",
+    "format:check": "npx --yes prettier@3.6.2 --check .",
     "db:generate": "npm run prisma:generate -w @expenseflow/api",
     "db:migrate": "npm run prisma:migrate -w @expenseflow/api",
+    "db:deploy": "npm run prisma:deploy -w @expenseflow/api",
     "db:seed": "npm run prisma:seed -w @expenseflow/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
   },
-  "engines": {"node": ">=22"}
+  "engines": {
+    "node": ">=22"
+  }
 }
