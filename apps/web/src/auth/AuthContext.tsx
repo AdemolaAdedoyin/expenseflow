@@ -72,8 +72,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setAccessToken(token);
       },
       async logout() {
-        await endSession();
-        setAccessToken(null);
+        try {
+          await endSession();
+        } finally {
+          setAccessToken(null);
+        }
       },
     }),
     [accessToken, isInitializing],
