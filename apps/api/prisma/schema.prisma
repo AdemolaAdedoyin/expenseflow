@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  FINANCE
+  MANAGER
+  EMPLOYEE
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_MANAGER
+  PENDING_FINANCE
+  APPROVED
+  REJECTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+}
+
+enum ApprovalLevel {
+  MANAGER
+  FINANCE
+}
+
+enum PolicyAction {
+  REQUIRE_MANAGER
+  REQUIRE_FINANCE
+  AUTO_REJECT
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  expenses  Expense[]
+  policies  Policy[]
+  audits    AuditLog[]
+}
+
+model User {
+  id             String       @id @default(cuid())
+  email          String       @unique
+  passwordHash   String
+  firstName      String
+  lastName       String
+  role           Role         @default(EMPLOYEE)
+  department     String?
+  managerId      String?
+  organizationId String
+  manager        User?        @relation("ManagerReports", fields: [managerId], references: [id])
+  reports        User[]       @relation("ManagerReports")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses       Expense[]    @relation("ExpenseOwner")
+  approvals      Approval[]   @relation("Approver")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, role])
+}
+
+model Expense {
+  id             String        @id @default(cuid())
+  organizationId String
+  userId         String
+  merchant       String
+  amountCents    Int
+  currency       String        @default("USD")
+  category       String
+  description    String?
+  receiptUrl     String?
+  incurredAt     DateTime
+  status         ExpenseStatus @default(DRAFT)
+  rejectionReason String?
+  submittedAt    DateTime?
+  decidedAt      DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation("ExpenseOwner", fields: [userId], references: [id], onDelete: Cascade)
+  approvals      Approval[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([userId, createdAt])
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  expenseId  String
+  approverId String
+  level      ApprovalLevel
+  status     ApprovalStatus @default(PENDING)
+  comment    String?
+  decidedAt  DateTime?
+  createdAt  DateTime       @default(now())
+  expense    Expense        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  approver   User           @relation("Approver", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, level])
+  @@index([approverId, status])
+}
+
+model Policy {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  category       String?
+  minAmountCents Int?
+  maxAmountCents Int?
+  action         PolicyAction
+  priority       Int          @default(100)
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, active, priority])
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  actorId        String?
+  entityType     String
+  entityId       String
+  action         String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, createdAt])
+}

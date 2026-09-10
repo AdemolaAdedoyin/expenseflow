@@ -1,0 +1,19 @@
+{
+  "name": "expenseflow",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "concurrently -n api,web \"npm run dev -w @expenseflow/api\" \"npm run dev -w @expenseflow/web\"",
+    "build": "npm run build -w @expenseflow/api && npm run build -w @expenseflow/web",
+    "test": "npm run test -w @expenseflow/api",
+    "lint": "npm run lint -w @expenseflow/api && npm run lint -w @expenseflow/web",
+    "db:generate": "npm run prisma:generate -w @expenseflow/api",
+    "db:migrate": "npm run prisma:migrate -w @expenseflow/api",
+    "db:seed": "npm run prisma:seed -w @expenseflow/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "engines": {"node": ">=22"}
+}
