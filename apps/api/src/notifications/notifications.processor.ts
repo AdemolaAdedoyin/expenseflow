@@ -1,34 +1,49 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { RequestContextService } from '../common/observability/request-context';
+import { StructuredLogger } from '../common/observability/structured-logger';
 import { EmailProviderService } from './email-provider';
-
-type NotificationJob = {
-  type: string;
-  recipientEmail: string;
-  subject: string;
-  message: string;
-};
+import { NotificationJob } from './notifications.service';
 
 @Processor('notifications')
 export class NotificationsProcessor extends WorkerHost {
-  private readonly logger = new Logger(NotificationsProcessor.name);
-
-  constructor(private readonly emailProvider: EmailProviderService) {
+  constructor(
+    private readonly emailProvider: EmailProviderService,
+    private readonly requestContext: RequestContextService,
+    private readonly logger: StructuredLogger,
+  ) {
     super();
   }
 
   async process(job: Job<NotificationJob>) {
-    const result = await this.emailProvider.send({
-      to: job.data.recipientEmail,
-      subject: job.data.subject,
-      text: job.data.message,
-    });
+    const run = async () => {
+      const result = await this.emailProvider.send({
+        to: job.data.recipientEmail,
+        subject: job.data.subject,
+        text: job.data.message,
+      });
 
-    this.logger.log(
-      `[${job.data.type}] delivered via ${result.provider} to ${job.data.recipientEmail}`,
-    );
+      this.logger.log(
+        {
+          event: 'notification.delivered',
+          notificationType: job.data.type,
+          provider: result.provider,
+          recipientEmail: job.data.recipientEmail,
+          jobId: job.id,
+          attempt: job.attemptsMade + 1,
+        },
+        NotificationsProcessor.name,
+      );
 
-    return result;
+      return result;
+    };
+
+    if (!job.data.trace) {
+      return run();
+    }
+
+    // AsyncLocalStorage restores the originating trace for every log emitted
+    // while the worker handles this job, even though it runs after the HTTP call.
+    return this.requestContext.run(job.data.trace, run);
   }
 }
