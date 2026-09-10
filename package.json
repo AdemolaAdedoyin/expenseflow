@@ -6,8 +6,11 @@
   "scripts": {
     "predev": "npm run db:generate",
     "dev": "concurrently -n api,web \"npm run dev -w @expenseflow/api\" \"npm run dev -w @expenseflow/web\"",
+    "dev:local": "npm run db:deploy && npm run dev",
     "build": "npm run build -w @expenseflow/api && npm run build -w @expenseflow/web",
     "test": "npm run test -w @expenseflow/api",
+    "test:integration": "npm run test:integration -w @expenseflow/api",
+    "test:e2e": "npm run test:e2e -w @expenseflow/api",
     "lint": "npm run lint -w @expenseflow/api && npm run lint -w @expenseflow/web",
     "format": "npx --yes prettier@3.6.2 --write .",
     "format:check": "npx --yes prettier@3.6.2 --check .",
