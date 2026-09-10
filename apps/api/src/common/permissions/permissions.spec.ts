@@ -1,5 +1,5 @@
 import { Role } from '@prisma/client';
-import { hasPermission, Permission, ROLE_PERMISSIONS } from './permissions';
+import { hasPermission, Permission } from './permissions';
 
 describe('permission model', () => {
   it('lets employees create and submit expenses without approval privileges', () => {
@@ -14,7 +14,10 @@ describe('permission model', () => {
     expect(hasPermission(Role.FINANCE, Permission.EXPENSE_CREATE)).toBe(false);
   });
 
-  it('grants administrators every defined capability', () => {
-    expect(new Set(ROLE_PERMISSIONS[Role.ADMIN])).toEqual(new Set(Object.values(Permission)));
+  it('keeps employee-only mutations out of the admin role', () => {
+    expect(hasPermission(Role.ADMIN, Permission.AUDIT_READ)).toBe(true);
+    expect(hasPermission(Role.ADMIN, Permission.POLICY_MANAGE)).toBe(true);
+    expect(hasPermission(Role.ADMIN, Permission.EXPENSE_CREATE)).toBe(false);
+    expect(hasPermission(Role.ADMIN, Permission.EXPENSE_SUBMIT)).toBe(false);
   });
 });
