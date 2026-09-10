@@ -1,4 +1,4 @@
-import { Injectable, NestMiddleware, TooManyRequestsException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import { RateLimitDecision, RateLimitService } from './rate-limit.service';
 
@@ -36,7 +36,11 @@ export class RateLimitMiddleware implements NestMiddleware {
         'Retry-After',
         Math.max(1, Math.ceil((decision.resetAt - Date.now()) / 1000)),
       );
-      throw new TooManyRequestsException('Too many requests. Please try again later.');
+
+      // Nest's built-in exception exports vary across major versions. Using the
+      // generic HttpException keeps the HTTP contract stable without coupling this
+      // middleware to a version-specific TooManyRequestsException export.
+      throw new HttpException('Too many requests. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     next();
