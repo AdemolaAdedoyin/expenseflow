@@ -33,9 +33,6 @@ const rolePermissions: Record<UserRole, readonly Permission[]> = {
   ],
   ADMIN: [
     'expense:read',
-    'expense:create',
-    'expense:submit',
-    'receipt:manage',
     'approval:review',
     'policy:read',
     'policy:manage',
