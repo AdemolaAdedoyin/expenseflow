@@ -37,15 +37,17 @@ export class ExpensesService {
   ) {}
 
   async create(user: AuthUser, dto: CreateExpenseDto) {
-    const expense = await this.prisma.expense.create({
-      data: {
-        organizationId: user.organizationId,
-        userId: user.sub,
-        ...dto,
-        incurredAt: new Date(dto.incurredAt),
-        currency: dto.currency ?? 'USD',
-      },
-    });
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.create({
+        data: {
+          organizationId: user.organizationId,
+          userId: user.sub,
+          ...dto,
+          incurredAt: new Date(dto.incurredAt),
+          currency: dto.currency ?? 'USD',
+        },
+      }),
+    );
 
     await this.audit.write({
       organizationId: user.organizationId,
@@ -80,25 +82,29 @@ export class ExpensesService {
       };
     }
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.expense.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true,
-              email: true,
+    const [items, total] = await this.prisma.withTenant(
+      user.organizationId,
+      async (transaction) =>
+        Promise.all([
+          transaction.expense.findMany({
+            where,
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+              approvals: true,
             },
-          },
-          approvals: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.expense.count({ where }),
-    ]);
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+          transaction.expense.count({ where }),
+        ]),
+    );
 
     return {
       items,
@@ -110,35 +116,37 @@ export class ExpensesService {
   }
 
   async get(user: AuthUser, id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            department: true,
-          },
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
         },
-        approvals: {
-          include: {
-            approver: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
             },
           },
-          orderBy: { createdAt: 'asc' },
+          approvals: {
+            include: {
+              approver: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
         },
-      },
-    });
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
@@ -174,25 +182,27 @@ export class ExpensesService {
       dto.objectKey,
     );
 
-    const updated = await this.prisma.expense.updateMany({
-      where: {
-        id,
-        organizationId: user.organizationId,
-        userId: user.sub,
-        status: ExpenseStatus.DRAFT,
-        version: dto.expectedVersion,
-      },
-      data: {
-        receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
-        version: { increment: 1 },
-      },
+    const expense = await this.prisma.withTenant(user.organizationId, async (transaction) => {
+      const updated = await transaction.expense.updateMany({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+          status: ExpenseStatus.DRAFT,
+          version: dto.expectedVersion,
+        },
+        data: {
+          receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
+          version: { increment: 1 },
+        },
+      });
+
+      if (updated.count !== 1) {
+        throw this.staleExpenseConflict();
+      }
+
+      return transaction.expense.findUniqueOrThrow({ where: { id } });
     });
-
-    if (updated.count !== 1) {
-      throw this.staleExpenseConflict();
-    }
-
-    const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
 
     await this.audit.write({
       organizationId: user.organizationId,
@@ -218,14 +228,16 @@ export class ExpensesService {
   }
 
   async submit(user: AuthUser, id: string, dto: SubmitExpenseDto) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-        userId: user.sub,
-      },
-      include: { user: true },
-    });
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+        },
+        include: { user: true },
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
@@ -262,7 +274,9 @@ export class ExpensesService {
 
     const status = this.resolveSubmissionStatus(evaluation);
 
-    const updated = await this.prisma.$transaction(async (transaction) => {
+    // The tenant setting and the workflow writes share one connection. That matters for
+    // PostgreSQL RLS because transaction-local settings must not leak through the pool.
+    const updated = await this.prisma.withTenant(user.organizationId, async (transaction) => {
       const changed = await transaction.expense.updateMany({
         where: {
           id,
@@ -352,13 +366,15 @@ export class ExpensesService {
   }
 
   private async getOwnedDraftExpense(user: AuthUser, id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-        userId: user.sub,
-      },
-    });
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+        },
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
