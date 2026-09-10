@@ -11,9 +11,8 @@ import {
 } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { hasPermission } from '../auth/permissions';
 import { useCurrentUser } from '../auth/useCurrentUser';
-
-const approverRoles = new Set(['MANAGER', 'FINANCE', 'ADMIN']);
 
 export default function AppShell() {
   const navigate = useNavigate();
@@ -40,7 +39,7 @@ export default function AppShell() {
     navigate('/login', { replace: true });
   }
 
-  const canApprove = user ? approverRoles.has(user.role) : false;
+  const canReviewApprovals = user ? hasPermission(user.role, 'approval:review') : false;
 
   return (
     <div className="shell">
@@ -71,7 +70,7 @@ export default function AppShell() {
             Expenses
           </NavLink>
 
-          {canApprove && (
+          {canReviewApprovals && (
             <NavLink to="/approvals" onClick={closeSidebar}>
               <CheckSquare />
               Approvals
@@ -84,11 +83,7 @@ export default function AppShell() {
           </NavLink>
         </nav>
 
-        <button
-          className="logout"
-          type="button"
-          onClick={() => void handleLogout()}
-        >
+        <button className="logout" type="button" onClick={() => void handleLogout()}>
           <LogOut />
           Sign out
         </button>
