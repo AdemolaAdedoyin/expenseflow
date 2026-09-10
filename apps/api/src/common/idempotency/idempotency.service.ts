@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { IdempotencyStatus, Prisma } from '@prisma/client';
+import { IdempotencyStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export type IdempotencyClaim =
@@ -37,7 +37,7 @@ export class IdempotencyService {
 
       return { kind: 'claimed', recordId: record.id };
     } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+      if ((error as { code?: string } | null)?.code !== 'P2002') {
         throw error;
       }
     }
