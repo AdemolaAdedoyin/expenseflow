@@ -20,46 +20,50 @@ export class ApprovalsService {
   ) {}
 
   inbox(user: AuthUser) {
-    return this.prisma.approval.findMany({
-      where: {
-        approverId: user.sub,
-        status: ApprovalStatus.PENDING,
-        expense: { organizationId: user.organizationId },
-      },
-      include: {
-        expense: {
-          include: {
-            user: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-                department: true,
+    return this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.approval.findMany({
+        where: {
+          approverId: user.sub,
+          status: ApprovalStatus.PENDING,
+          expense: { organizationId: user.organizationId },
+        },
+        include: {
+          expense: {
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                  department: true,
+                },
               },
             },
           },
         },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
   }
 
   async decide(user: AuthUser, id: string, dto: DecideApprovalDto) {
-    const approval = await this.prisma.approval.findFirst({
-      where: {
-        id,
-        approverId: user.sub,
-        expense: { organizationId: user.organizationId },
-      },
-      include: {
-        expense: {
-          include: {
-            user: true,
-            approvals: true,
+    const approval = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.approval.findFirst({
+        where: {
+          id,
+          approverId: user.sub,
+          expense: { organizationId: user.organizationId },
+        },
+        include: {
+          expense: {
+            include: {
+              user: true,
+              approvals: true,
+            },
           },
         },
-      },
-    });
+      }),
+    );
 
     if (!approval) {
       throw new NotFoundException('Approval not found');
@@ -84,7 +88,7 @@ export class ApprovalsService {
 
     const approved = dto.decision === 'APPROVE';
 
-    const result = await this.prisma.$transaction(async (transaction) => {
+    const result = await this.prisma.withTenant(user.organizationId, async (transaction) => {
       const approvalUpdate = await transaction.approval.updateMany({
         where: {
           id,
@@ -192,7 +196,7 @@ export class ApprovalsService {
     });
 
     if (result.status === ExpenseStatus.PENDING_FINANCE) {
-      await this.notifyNextFinanceApprover(approval.expenseId);
+      await this.notifyNextFinanceApprover(user.organizationId, approval.expenseId);
     }
 
     return result;
@@ -204,15 +208,17 @@ export class ApprovalsService {
     );
   }
 
-  private async notifyNextFinanceApprover(expenseId: string) {
-    const nextApproval = await this.prisma.approval.findFirst({
-      where: {
-        expenseId,
-        level: ApprovalLevel.FINANCE,
-        status: ApprovalStatus.PENDING,
-      },
-      include: { approver: true },
-    });
+  private async notifyNextFinanceApprover(organizationId: string, expenseId: string) {
+    const nextApproval = await this.prisma.withTenant(organizationId, (transaction) =>
+      transaction.approval.findFirst({
+        where: {
+          expenseId,
+          level: ApprovalLevel.FINANCE,
+          status: ApprovalStatus.PENDING,
+        },
+        include: { approver: true },
+      }),
+    );
 
     if (!nextApproval) {
       throw new BadRequestException('Finance approval route is missing');

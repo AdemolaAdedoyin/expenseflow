@@ -17,12 +17,13 @@ NestJS API
   |        |
   |        +--> Policy / approval state machine
   |
-  +--> Prisma --> PostgreSQL
+  +--> Prisma --> PostgreSQL + tenant RLS
 ```
 
 ## Features
 
 - Multi-tenant organization scoping
+- PostgreSQL row-level security on tenant-owned business records
 - Short-lived JWT access tokens with rotating, revocable refresh sessions
 - HttpOnly refresh-token cookies
 - Capability-based authorization for Admin, Finance, Manager, and Employee roles
@@ -120,11 +121,21 @@ npm run test:e2e
 
 The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. The end-to-end suite boots the real NestJS module and covers authentication, authorization, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis.
 
+The integration suite also creates a temporary low-privilege PostgreSQL role to prove that RLS hides rows from other organizations. I do not run that assertion through the migration/superuser connection because PostgreSQL superusers bypass row-level security.
+
 ## Authentication and authorization
 
 I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. Only a SHA-256 hash of each refresh token is stored in PostgreSQL. Refreshing rotates the session token, signing out revokes the current session, and the API can revoke all active sessions for a user.
 
 I authorize endpoints using named business capabilities such as `expense:create`, `expense:submit`, `approval:review`, and `policy:manage`. I mirror those checks in React for navigation and actions, while the NestJS permission guard remains the authorization boundary.
+
+## Tenant isolation
+
+I keep explicit `organizationId` filters in application queries and add PostgreSQL row-level security underneath them for tenant-owned business data. Expense, Approval, Policy, and AuditLog rows are protected by database policies.
+
+The API uses a tenant-scoped Prisma transaction helper that sets `app.current_organization_id` with PostgreSQL `set_config(..., true)`. The setting is transaction-local, so it stays on the same connection as the query and is cleared automatically when the transaction ends instead of leaking through the connection pool.
+
+The RLS layer is defense in depth, not a replacement for API authorization. Production runtime connections should use a normal PostgreSQL role without `SUPERUSER` or `BYPASSRLS`; migration/administrative connections can remain privileged.
 
 ## Rate limiting
 
@@ -217,7 +228,6 @@ GET    /api/health/ready
 ## Planned improvements
 
 - SSO/SAML/OIDC
-- PostgreSQL row-level security as an additional tenant boundary
 
 I remove items from this list as I implement them so it reflects work that is actually still outstanding.
 
