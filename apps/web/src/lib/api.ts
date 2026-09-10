@@ -5,6 +5,10 @@ type ApiErrorBody = {
   message?: string | string[];
 };
 
+type RefreshResponse = {
+  accessToken: string;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -15,8 +19,18 @@ export class ApiError extends Error {
   }
 }
 
+let refreshRequest: Promise<string> | null = null;
+
 export function getAccessToken() {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
+}
+
+export function setAccessToken(token: string) {
+  localStorage.setItem(ACCESS_TOKEN_KEY, token);
+}
+
+export function clearAccessToken() {
+  localStorage.removeItem(ACCESS_TOKEN_KEY);
 }
 
 function getErrorMessage(body: ApiErrorBody, fallback: string) {
@@ -27,7 +41,60 @@ function getErrorMessage(body: ApiErrorBody, fallback: string) {
   return body.message ?? fallback;
 }
 
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function parseError(response: Response) {
+  const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
+  return new ApiError(getErrorMessage(body, 'Request failed'), response.status);
+}
+
+export function refreshSession() {
+  if (!refreshRequest) {
+    refreshRequest = fetch(`${BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw await parseError(response);
+        }
+
+        const body = (await response.json()) as RefreshResponse;
+        setAccessToken(body.accessToken);
+        return body.accessToken;
+      })
+      .catch((error) => {
+        clearAccessToken();
+        throw error;
+      })
+      .finally(() => {
+        refreshRequest = null;
+      });
+  }
+
+  return refreshRequest;
+}
+
+export async function endSession() {
+  try {
+    await fetch(`${BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+  } finally {
+    clearAccessToken();
+  }
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit,
+  allowRefresh: boolean,
+): Promise<T> {
   const accessToken = getAccessToken();
   const headers = new Headers(options.headers);
 
@@ -43,12 +110,22 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
+    credentials: 'include',
     headers,
   });
 
+  if (
+    response.status === 401 &&
+    allowRefresh &&
+    path !== '/auth/login' &&
+    path !== '/auth/refresh'
+  ) {
+    await refreshSession();
+    return request<T>(path, options, false);
+  }
+
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
-    throw new ApiError(getErrorMessage(body, 'Request failed'), response.status);
+    throw await parseError(response);
   }
 
   if (response.status === 204) {
@@ -56,6 +133,10 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
 
   return response.json() as Promise<T>;
+}
+
+export function api<T>(path: string, options: RequestInit = {}) {
+  return request<T>(path, options, true);
 }
 
 export function money(cents: number, currency = 'USD') {
