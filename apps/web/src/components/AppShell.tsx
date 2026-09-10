@@ -25,7 +25,7 @@ export default function AppShell() {
   useEffect(() => {
     if (isError) {
       queryClient.clear();
-      logout();
+      void logout();
     }
   }, [isError, logout, queryClient]);
 
@@ -33,10 +33,10 @@ export default function AppShell() {
     setSidebarOpen(false);
   }
 
-  function handleLogout() {
+  async function handleLogout() {
     closeSidebar();
     queryClient.clear();
-    logout();
+    await logout();
     navigate('/login', { replace: true });
   }
 
@@ -84,7 +84,11 @@ export default function AppShell() {
           </NavLink>
         </nav>
 
-        <button className="logout" type="button" onClick={handleLogout}>
+        <button
+          className="logout"
+          type="button"
+          onClick={() => void handleLogout()}
+        >
           <LogOut />
           Sign out
         </button>
