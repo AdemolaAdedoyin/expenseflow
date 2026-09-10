@@ -1,12 +1,13 @@
 import { PrismaClient, Role } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { assertTestDatabase, clearDatabase } from './test-db';
 
 describe('PostgreSQL tenant row-level security', () => {
   const admin = new PrismaClient();
   const roleName = `expenseflow_rls_${process.pid}`;
   const password = randomBytes(18).toString('hex');
-  let tenantClient: PrismaClient;
+  let tenantClient: PrismaService;
   let organizationAId: string;
   let organizationBId: string;
 
@@ -75,7 +76,7 @@ describe('PostgreSQL tenant row-level security', () => {
     const tenantUrl = new URL(process.env.DATABASE_URL!);
     tenantUrl.username = roleName;
     tenantUrl.password = password;
-    tenantClient = new PrismaClient({
+    tenantClient = new PrismaService({
       datasources: { db: { url: tenantUrl.toString() } },
     });
     await tenantClient.$connect();
@@ -89,15 +90,14 @@ describe('PostgreSQL tenant row-level security', () => {
     await admin.$disconnect();
   });
 
-  it('returns no tenant rows when the transaction has no tenant context', async () => {
+  it('returns no tenant rows when the connection has no tenant context', async () => {
     await expect(tenantClient.expense.findMany()).resolves.toEqual([]);
   });
 
-  it('only exposes rows for the tenant set on the current transaction', async () => {
-    const tenantAExpenses = await tenantClient.$transaction(async (transaction) => {
-      await transaction.$executeRaw`SELECT set_config('app.current_organization_id', ${organizationAId}, true)`;
-      return transaction.expense.findMany({ orderBy: { merchant: 'asc' } });
-    });
+  it('only exposes rows for the tenant set by withTenant()', async () => {
+    const tenantAExpenses = await tenantClient.withTenant(organizationAId, (transaction) =>
+      transaction.expense.findMany({ orderBy: { merchant: 'asc' } }),
+    );
 
     expect(tenantAExpenses).toHaveLength(1);
     expect(tenantAExpenses[0].organizationId).toBe(organizationAId);
