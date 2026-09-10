@@ -1,12 +1,8 @@
 # ExpenseFlow
 
-A production-style, multi-tenant expense management and approval platform built to demonstrate senior full-stack/backend engineering skills.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, and tenant isolation.
 
-## Why this project exists
-
-Most portfolio applications stop at CRUD. ExpenseFlow models a business workflow with authorization boundaries, rule evaluation, multi-step approvals, asynchronous jobs, auditability, reporting, and tenant isolation.
-
-### Architecture
+## Architecture
 
 ```text
 React / TypeScript
@@ -25,14 +21,16 @@ NestJS API
 ## Features
 
 - Multi-tenant organization scoping
-- JWT authentication
+- Short-lived JWT access tokens
+- Rotating refresh tokens backed by revocable sessions
+- HttpOnly refresh-token cookies
 - RBAC: Admin, Finance, Manager, Employee
 - Expense drafts and submission workflow
 - Configurable policy engine
 - Multi-stage Manager -> Finance approval routing
 - Automatic policy rejection
 - Transactional state changes
-- Immutable-style audit events
+- Audit events for important domain actions
 - BullMQ/Redis background notification processing with retries
 - PostgreSQL + Prisma
 - Pagination and filtering
@@ -43,6 +41,7 @@ NestJS API
 - Unit tests
 - Docker Compose
 - GitHub Actions CI
+- Prettier + EditorConfig formatting
 
 ## Workflow example
 
@@ -109,12 +108,15 @@ All demo users use password `Password123!`.
 | Finance | finance@demo.com |
 | Admin | admin@demo.com |
 
-A useful demo is to sign in as Employee, create and submit an expense, then sign in as Manager/Finance to approve it.
+A simple end-to-end demo is to sign in as Employee, create and submit an expense, then sign in as Manager or Finance to approve it.
 
 ## API highlights
 
 ```text
 POST   /api/auth/login
+POST   /api/auth/refresh
+POST   /api/auth/logout
+POST   /api/auth/logout-all
 GET    /api/auth/me
 GET    /api/users
 
@@ -134,37 +136,42 @@ GET    /api/audit
 GET    /api/reports/dashboard
 ```
 
-## Backend design notes
+## Design notes
 
 ### Tenant isolation
 
-The authenticated JWT carries an `organizationId`. Business queries scope records by that organization rather than trusting organization IDs supplied by clients.
+I carry the authenticated user's `organizationId` in the JWT and scope business queries by that organization. I do not trust organization IDs supplied by clients for authorization decisions.
+
+### Authentication and sessions
+
+I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. I store only a SHA-256 hash of each refresh token in PostgreSQL. Each successful refresh revokes the old session token and creates a replacement, so a refresh token cannot be reused indefinitely. Signing out revokes the current session, and the API also supports revoking every active session for a user.
 
 ### Approval state machine
 
-Approval state is persisted explicitly. Finance approval remains inactive until manager approval succeeds, preventing out-of-order approval in a two-level workflow.
+I persist approval state explicitly. Finance approval stays inactive until manager approval succeeds, which prevents an expense from moving through the workflow out of order.
 
 ### Policy engine
 
-Policies match against category and amount ranges. Multiple policies can match one expense, allowing the workflow to compose requirements such as manager + finance review.
+I evaluate policies against category and amount ranges. More than one policy can match the same expense, so I can compose requirements such as manager review plus finance review.
 
 ### Transactions
 
-Submission and approval decisions use Prisma transactions when multiple database rows must transition together.
+I use Prisma transactions when a submission or approval decision needs multiple database rows to move together. That keeps the expense state and its approval records consistent.
 
 ### Async jobs
 
-Notifications are sent through BullMQ rather than within the HTTP request path. Jobs use retry/backoff configuration. The demo notification adapter logs to the console so the project is runnable without paid third-party services; the worker is intentionally isolated so SES/SendGrid can replace it.
+I send notifications through BullMQ instead of doing that work inside the HTTP request path. Jobs use retry/backoff configuration. The current notification adapter writes to the console so the application stays easy to run locally, while the worker remains isolated enough for me to replace the adapter with SES, SendGrid, or another provider later.
 
 ### Audit trail
 
-Important domain actions write audit records containing actor, entity, action and structured metadata.
+I record important domain actions with the actor, entity, action, and structured metadata so workflow changes can be traced without relying on application logs alone.
 
-## Production improvements
+### Authorization
 
-If this were deployed beyond a portfolio/demo environment, the next changes would be:
+I enforce role restrictions at the API layer and mirror those permissions in the frontend so users only see actions that are available to them. The backend remains the source of truth for authorization.
 
-- Refresh-token rotation and session revocation
+## Planned improvements
+
 - SSO/SAML/OIDC
 - Object storage + pre-signed receipt uploads
 - Real email provider adapter
@@ -175,6 +182,8 @@ If this were deployed beyond a portfolio/demo environment, the next changes woul
 - Idempotency keys on mutation endpoints
 - Optimistic locking/versioning for high-contention workflows
 - Integration and end-to-end test suites
+
+I remove items from this list as I implement them so it reflects the work that is actually still outstanding.
 
 ## Repository layout
 
@@ -197,10 +206,6 @@ expenseflow/
 ├── docker-compose.yml
 └── README.md
 ```
-
-## Talking points for interviews
-
-This repository gives you concrete topics to discuss: tenant boundaries, domain-driven state transitions, synchronous vs asynchronous work, transaction boundaries, queue retry semantics, approval race conditions, data-model tradeoffs, policy composition, indexes, API authorization, and how you would scale the architecture.
 
 ## License
 

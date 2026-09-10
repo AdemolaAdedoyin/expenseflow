@@ -68,32 +68,48 @@ model User {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   expenses       Expense[]    @relation("ExpenseOwner")
   approvals      Approval[]   @relation("Approver")
+  sessions       Session[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId, role])
 }
 
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
 model Expense {
-  id             String        @id @default(cuid())
-  organizationId String
-  userId         String
-  merchant       String
-  amountCents    Int
-  currency       String        @default("USD")
-  category       String
-  description    String?
-  receiptUrl     String?
-  incurredAt     DateTime
-  status         ExpenseStatus @default(DRAFT)
+  id              String        @id @default(cuid())
+  organizationId  String
+  userId          String
+  merchant        String
+  amountCents     Int
+  currency        String        @default("USD")
+  category        String
+  description     String?
+  receiptUrl      String?
+  incurredAt      DateTime
+  status          ExpenseStatus @default(DRAFT)
   rejectionReason String?
-  submittedAt    DateTime?
-  decidedAt      DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User          @relation("ExpenseOwner", fields: [userId], references: [id], onDelete: Cascade)
-  approvals      Approval[]
+  submittedAt     DateTime?
+  decidedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User          @relation("ExpenseOwner", fields: [userId], references: [id], onDelete: Cascade)
+  approvals       Approval[]
 
   @@index([organizationId, status, createdAt])
   @@index([userId, createdAt])
