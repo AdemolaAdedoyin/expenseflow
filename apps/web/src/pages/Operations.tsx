@@ -19,12 +19,33 @@ type OperationsOverview = {
   };
 };
 
+function percentOf(value: number, maximum: number) {
+  if (value === 0 || maximum === 0) return 0;
+  return Math.max(4, Math.round((value / maximum) * 100));
+}
+
 export default function Operations() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['operations'],
     queryFn: () => api<OperationsOverview>('/operations/overview'),
     refetchInterval: 10_000,
   });
+
+  const queueEntries = data
+    ? [
+        ['Waiting', data.notifications.waiting],
+        ['Active', data.notifications.active],
+        ['Delayed', data.notifications.delayed],
+        ['Completed', data.notifications.completed],
+        ['Failed', data.notifications.failed],
+      ] as const
+    : [];
+
+  const maxQueueCount = Math.max(0, ...queueEntries.map(([, count]) => count));
+  const statusEntries = data
+    ? Object.entries(data.http.statusCodes).sort(([a], [b]) => Number(a) - Number(b))
+    : [];
+  const maxStatusCount = Math.max(0, ...statusEntries.map(([, count]) => count));
 
   return (
     <section>
@@ -46,54 +67,68 @@ export default function Operations() {
       {data && (
         <>
           <div className="cards">
-            <div className="card">
+            <div className="metric">
               <small>HTTP requests</small>
-              <strong>{data.http.requestCount}</strong>
+              <b>{data.http.requestCount}</b>
+              <span>Since this API process started</span>
             </div>
-            <div className="card">
+            <div className="metric">
               <small>Server errors</small>
-              <strong>{data.http.errorCount}</strong>
+              <b>{data.http.errorCount}</b>
               <span>{(data.http.errorRate * 100).toFixed(1)}% error rate</span>
             </div>
-            <div className="card">
+            <div className="metric">
               <small>Average latency</small>
-              <strong>{data.http.averageDurationMs} ms</strong>
+              <b>{data.http.averageDurationMs.toFixed(2)} ms</b>
+              <span>Across recorded requests</span>
             </div>
-            <div className="card">
+            <div className="metric">
               <small>Queue backlog</small>
-              <strong>{data.notifications.waiting + data.notifications.delayed}</strong>
+              <b>{data.notifications.waiting + data.notifications.delayed}</b>
+              <span>Waiting + delayed jobs</span>
             </div>
           </div>
 
           <div className="approval-grid">
             <div className="panel">
               <h2>Notification queue</h2>
-              <div className="metrics-list">
-                <span>Waiting <b>{data.notifications.waiting}</b></span>
-                <span>Active <b>{data.notifications.active}</b></span>
-                <span>Delayed <b>{data.notifications.delayed}</b></span>
-                <span>Completed <b>{data.notifications.completed}</b></span>
-                <span>Failed <b>{data.notifications.failed}</b></span>
-              </div>
+              <p>Current BullMQ job counts.</p>
+              {queueEntries.map(([label, count]) => (
+                <div className="barrow" key={label}>
+                  <span>{label}</span>
+                  <div className="bar" aria-hidden="true">
+                    <i style={{ width: `${percentOf(count, maxQueueCount)}%` }} />
+                  </div>
+                  <strong>{count}</strong>
+                </div>
+              ))}
             </div>
 
             <div className="panel">
               <h2>HTTP status codes</h2>
-              <div className="metrics-list">
-                {Object.entries(data.http.statusCodes).length ? (
-                  Object.entries(data.http.statusCodes)
-                    .sort(([a], [b]) => Number(a) - Number(b))
-                    .map(([status, count]) => (
-                      <span key={status}>HTTP {status} <b>{count}</b></span>
-                    ))
-                ) : (
-                  <p>No requests recorded yet.</p>
-                )}
-              </div>
+              <p>Responses grouped by status code.</p>
+              {statusEntries.length ? (
+                statusEntries.map(([status, count]) => (
+                  <div className="barrow" key={status}>
+                    <span>HTTP {status}</span>
+                    <div className="bar" aria-hidden="true">
+                      <i style={{ width: `${percentOf(count, maxStatusCount)}%` }} />
+                    </div>
+                    <strong>{count}</strong>
+                  </div>
+                ))
+              ) : (
+                <p>No requests recorded yet.</p>
+              )}
             </div>
           </div>
 
-          <small>Auto-refreshes every 10 seconds · Updated {new Date(data.generatedAt).toLocaleTimeString()}</small>
+          <p>
+            <small>
+              Auto-refreshes every 10 seconds · Updated{' '}
+              {new Date(data.generatedAt).toLocaleTimeString()}
+            </small>
+          </p>
         </>
       )}
     </section>
