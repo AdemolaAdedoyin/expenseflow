@@ -51,9 +51,11 @@ export class HealthService {
 
   private async checkRedis(): Promise<DependencyStatus> {
     try {
-      const client = await this.notificationsQueue.client;
-      const response = await client.ping();
-      return { status: response === 'PONG' ? 'up' : 'down' };
+      // Querying queue counts exercises BullMQ's real Redis connection using its
+      // public typed API. That is more robust than reaching into the queue's
+      // internal Redis client, whose interface varies across BullMQ versions.
+      await this.notificationsQueue.getJobCounts('waiting');
+      return { status: 'up' };
     } catch {
       return { status: 'down' };
     }
