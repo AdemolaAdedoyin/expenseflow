@@ -55,6 +55,18 @@ export class CompleteReceiptUploadDto {
   @IsString()
   @MaxLength(1000)
   objectKey!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  expectedVersion!: number;
+}
+
+export class SubmitExpenseDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  expectedVersion!: number;
 }
 
 export class ListExpensesQuery {
