@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
+import PermissionRoute from './auth/PermissionRoute';
 import RequireAuth from './auth/RequireAuth';
-import RoleRoute from './auth/RoleRoute';
 import AppShell from './components/AppShell';
 import Approvals from './pages/Approvals';
 import Dashboard from './pages/Dashboard';
@@ -41,9 +41,7 @@ function AppRoutes() {
           <Route path="expenses" element={<Expenses />} />
           <Route path="policies" element={<Policies />} />
 
-          <Route
-            element={<RoleRoute allowedRoles={['MANAGER', 'FINANCE', 'ADMIN']} />}
-          >
+          <Route element={<PermissionRoute permission="approval:review" />}>
             <Route path="approvals" element={<Approvals />} />
           </Route>
         </Route>
