@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Idempotent } from '../common/idempotency/idempotent.decorator';
 import {
   CompleteReceiptUploadDto,
   CreateExpenseDto,
@@ -22,6 +23,7 @@ export class ExpensesController {
 
   @Post()
   @Roles(Role.EMPLOYEE)
+  @Idempotent()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateExpenseDto) {
     return this.expenses.create(user, dto);
   }
@@ -38,6 +40,7 @@ export class ExpensesController {
 
   @Post(':id/receipt-upload')
   @Roles(Role.EMPLOYEE)
+  @Idempotent()
   prepareReceiptUpload(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -48,6 +51,7 @@ export class ExpensesController {
 
   @Post(':id/receipt-upload/complete')
   @Roles(Role.EMPLOYEE)
+  @Idempotent()
   completeReceiptUpload(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
@@ -63,6 +67,7 @@ export class ExpensesController {
 
   @Post(':id/submit')
   @Roles(Role.EMPLOYEE)
+  @Idempotent()
   submit(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.expenses.submit(user, id);
   }

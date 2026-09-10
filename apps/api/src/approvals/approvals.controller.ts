@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { Idempotent } from '../common/idempotency/idempotent.decorator';
 import { ApprovalsService } from './approvals.service';
 import { DecideApprovalDto } from './dto';
 
@@ -22,6 +23,7 @@ export class ApprovalsController {
   }
 
   @Post(':id/decision')
+  @Idempotent()
   decide(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

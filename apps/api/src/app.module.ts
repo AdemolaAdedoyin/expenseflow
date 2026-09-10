@@ -10,15 +10,21 @@ import { PoliciesModule } from './policies/policies.module';
 import { AuditModule } from './audit/audit.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({ connection: { url: config.get('REDIS_URL', 'redis://localhost:6379') } }),
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url: config.get('REDIS_URL', 'redis://localhost:6379'),
+        },
+      }),
     }),
     PrismaModule,
+    IdempotencyModule,
     AuthModule,
     UsersModule,
     AuditModule,
