@@ -1,0 +1,42 @@
+nav a.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+nav a.active svg {
+  color: #7dd3fc;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
+}
+
+.page-error {
+  margin-bottom: 18px;
+}
+
+.table-state {
+  padding: 28px 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.route-loading {
+  display: grid;
+  min-height: calc(100vh - 70px);
+  place-items: center;
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+  .heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .heading > .primary {
+    width: 100%;
+  }
+}
