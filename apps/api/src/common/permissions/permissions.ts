@@ -18,17 +18,15 @@ export enum Permission {
   USER_READ = 'user:read',
 }
 
-const employeePermissions = [
-  Permission.EXPENSE_READ,
-  Permission.EXPENSE_CREATE,
-  Permission.EXPENSE_SUBMIT,
-  Permission.RECEIPT_MANAGE,
-  Permission.POLICY_READ,
-  Permission.REPORT_READ,
-] as const;
-
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  [Role.EMPLOYEE]: employeePermissions,
+  [Role.EMPLOYEE]: [
+    Permission.EXPENSE_READ,
+    Permission.EXPENSE_CREATE,
+    Permission.EXPENSE_SUBMIT,
+    Permission.RECEIPT_MANAGE,
+    Permission.POLICY_READ,
+    Permission.REPORT_READ,
+  ],
   [Role.MANAGER]: [
     Permission.EXPENSE_READ,
     Permission.APPROVAL_REVIEW,
@@ -45,7 +43,15 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.REPORT_READ,
     Permission.USER_READ,
   ],
-  [Role.ADMIN]: Object.values(Permission),
+  [Role.ADMIN]: [
+    Permission.EXPENSE_READ,
+    Permission.APPROVAL_REVIEW,
+    Permission.POLICY_READ,
+    Permission.POLICY_MANAGE,
+    Permission.AUDIT_READ,
+    Permission.REPORT_READ,
+    Permission.USER_READ,
+  ],
 };
 
 export function hasPermission(role: Role, permission: Permission) {
