@@ -1,7 +1,7 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { api } from '../lib/api';
+import { api, ssoStartUrl } from '../lib/api';
 import { LoginResponse } from '../types/auth';
 
 type LocationState = {
@@ -10,15 +10,26 @@ type LocationState = {
   };
 };
 
+type SsoConfig = {
+  enabled: boolean;
+};
+
 export default function Login() {
   const [email, setEmail] = useState('employee@demo.com');
   const [password, setPassword] = useState('Password123!');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
+
+  useEffect(() => {
+    api<SsoConfig>('/auth/sso/config')
+      .then((config) => setSsoEnabled(config.enabled))
+      .catch(() => setSsoEnabled(false));
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -50,6 +61,21 @@ export default function Login() {
         </div>
 
         <p>Expense operations without the spreadsheet chaos.</p>
+
+        {ssoEnabled && (
+          <>
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => window.location.assign(ssoStartUrl())}
+            >
+              Continue with SSO
+            </button>
+            <div className="auth-divider" aria-hidden="true">
+              <span>or</span>
+            </div>
+          </>
+        )}
 
         <label>
           Email
