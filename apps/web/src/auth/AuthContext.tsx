@@ -27,12 +27,15 @@ type AuthProviderProps = {
 };
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const initialToken = getAccessToken();
-  const [accessToken, setAccessToken] = useState<string | null>(initialToken);
-  const [isInitializing, setIsInitializing] = useState(!initialToken);
+  const [accessToken, setAccessToken] = useState<string | null>(() =>
+    getAccessToken(),
+  );
+  const [isInitializing, setIsInitializing] = useState(
+    () => !getAccessToken(),
+  );
 
   useEffect(() => {
-    if (initialToken) {
+    if (getAccessToken()) {
       return;
     }
 
@@ -58,7 +61,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => {
       active = false;
     };
-  }, [initialToken]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
