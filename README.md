@@ -21,7 +21,9 @@ NestJS API
 ## Features
 
 - Multi-tenant organization scoping
-- JWT authentication
+- Short-lived JWT access tokens
+- Rotating refresh tokens backed by revocable sessions
+- HttpOnly refresh-token cookies
 - RBAC: Admin, Finance, Manager, Employee
 - Expense drafts and submission workflow
 - Configurable policy engine
@@ -112,6 +114,9 @@ A simple end-to-end demo is to sign in as Employee, create and submit an expense
 
 ```text
 POST   /api/auth/login
+POST   /api/auth/refresh
+POST   /api/auth/logout
+POST   /api/auth/logout-all
 GET    /api/auth/me
 GET    /api/users
 
@@ -136,6 +141,10 @@ GET    /api/reports/dashboard
 ### Tenant isolation
 
 I carry the authenticated user's `organizationId` in the JWT and scope business queries by that organization. I do not trust organization IDs supplied by clients for authorization decisions.
+
+### Authentication and sessions
+
+I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. I store only a SHA-256 hash of each refresh token in PostgreSQL. Each successful refresh revokes the old session token and creates a replacement, so a refresh token cannot be reused indefinitely. Signing out revokes the current session, and the API also supports revoking every active session for a user.
 
 ### Approval state machine
 
