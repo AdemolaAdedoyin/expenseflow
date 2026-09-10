@@ -16,6 +16,7 @@ export enum Permission {
   AUDIT_READ = 'audit:read',
   REPORT_READ = 'report:read',
   USER_READ = 'user:read',
+  OPERATIONS_READ = 'operations:read',
 }
 
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
@@ -42,6 +43,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.AUDIT_READ,
     Permission.REPORT_READ,
     Permission.USER_READ,
+    Permission.OPERATIONS_READ,
   ],
   [Role.ADMIN]: [
     Permission.EXPENSE_READ,
@@ -51,6 +53,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     Permission.AUDIT_READ,
     Permission.REPORT_READ,
     Permission.USER_READ,
+    Permission.OPERATIONS_READ,
   ],
 };
 
