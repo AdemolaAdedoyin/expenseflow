@@ -71,20 +71,20 @@ export class ReceiptStorageService {
     const fields: Record<string, string> = {
       key: objectKey,
       'Content-Type': contentType,
-      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
-      'X-Amz-Credential': credential,
-      'X-Amz-Date': amzDate,
+      'x-amz-algorithm': 'AWS4-HMAC-SHA256',
+      'x-amz-credential': credential,
+      'x-amz-date': amzDate,
       Policy: policy,
-      'X-Amz-Signature': signature,
+      'x-amz-signature': signature,
     };
 
     if (s3.sessionToken) {
-      fields['X-Amz-Security-Token'] = s3.sessionToken;
+      fields['x-amz-security-token'] = s3.sessionToken;
     }
 
     return {
       objectKey,
-      uploadUrl: `https://${this.host(s3)}${this.rootPath(s3)}`,
+      uploadUrl: `https://${this.host(s3)}/`,
       fields,
       expiresInSeconds: UPLOAD_TTL_SECONDS,
     };
@@ -113,7 +113,7 @@ export class ReceiptStorageService {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, value]) => `${this.encode(key)}=${this.encode(value)}`)
       .join('&');
-    const canonicalUri = `${this.rootPath(s3)}${this.encodePath(objectKey)}`;
+    const canonicalUri = `/${this.encodePath(objectKey)}`;
     const canonicalRequest = [
       'GET',
       canonicalUri,
@@ -175,10 +175,6 @@ export class ReceiptStorageService {
 
   private host(config: S3Config) {
     return `${config.bucket}.s3.${config.region}.amazonaws.com`;
-  }
-
-  private rootPath(_config: S3Config) {
-    return '/';
   }
 
   private encode(value: string) {
