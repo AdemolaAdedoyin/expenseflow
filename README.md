@@ -1,6 +1,6 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, and private file handling.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, private file handling, and background email delivery.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ NestJS API
   |        |         |          |
   |        |         |          +--> S3 private receipt storage
   |        |         |
-  |        |         +--> BullMQ --> Redis --> Notification worker
+  |        |         +--> BullMQ --> Redis --> Notification worker --> Console / Amazon SES
   |        |
   |        +--> Policy / approval state machine
   |
@@ -35,6 +35,7 @@ NestJS API
 - Transactional state changes
 - Audit events for important domain actions
 - BullMQ/Redis background notification processing with retries
+- Pluggable email provider with Amazon SES delivery and console fallback
 - PostgreSQL + Prisma
 - Pagination and filtering
 - Reporting/analytics endpoints
@@ -79,6 +80,8 @@ $175 Meals expense
 **Frontend:** React, TypeScript, Vite, TanStack Query, React Router
 
 **Storage:** Amazon S3 with private objects and short-lived pre-signed access
+
+**Email:** Amazon SES with a local console provider fallback
 
 **Platform:** Docker Compose, GitHub Actions
 
@@ -131,6 +134,30 @@ For browser uploads, the S3 bucket needs CORS that permits the web application's
 ```
 
 The AWS principal used by the API should be limited to the receipt bucket and only the object operations the application needs rather than broad S3 access.
+
+## Email delivery
+
+Notifications continue to flow through BullMQ. The queue worker delegates delivery to an email-provider abstraction so local development can stay zero-cost while deployed environments can use Amazon SES.
+
+Local development defaults to:
+
+```text
+EMAIL_PROVIDER=console
+```
+
+To send real email through SES, configure:
+
+```text
+EMAIL_PROVIDER=ses
+AWS_REGION
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+SES_FROM_EMAIL
+```
+
+`AWS_SESSION_TOKEN` is supported for temporary credentials. The configured SES sender must be verified, and accounts that are still in the SES sandbox can only send to verified recipients. The AWS principal should have permission to send email through SES without broader account access.
+
+I keep provider-specific logic behind the notification worker so the expense and approval domain services only enqueue notification jobs. BullMQ handles retries and exponential backoff if the provider call fails.
 
 ## Demo users
 
@@ -200,9 +227,9 @@ I evaluate policies against category and amount ranges. More than one policy can
 
 I use Prisma transactions when a submission or approval decision needs multiple database rows to move together. That keeps the expense state and its approval records consistent.
 
-### Async jobs
+### Async jobs and email
 
-I send notifications through BullMQ instead of doing that work inside the HTTP request path. Jobs use retry/backoff configuration. The current notification adapter writes to the console so the application stays easy to run locally, while the worker remains isolated enough for me to replace the adapter with SES, SendGrid, or another provider later.
+I enqueue notifications through BullMQ instead of performing provider calls in the HTTP request path. The worker uses a provider abstraction: console delivery is the local default, while Amazon SES provides real delivery in configured environments. Provider failures bubble back to BullMQ so the queue's retry and exponential-backoff policy remains responsible for transient delivery failures.
 
 ### Audit trail
 
@@ -215,7 +242,6 @@ I enforce role restrictions at the API layer and mirror those permissions in the
 ## Planned improvements
 
 - SSO/SAML/OIDC
-- Real email provider adapter
 - Fine-grained permissions rather than role-only RBAC
 - PostgreSQL row-level security as an additional tenant boundary
 - Distributed tracing and structured logging
