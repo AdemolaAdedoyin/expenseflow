@@ -44,7 +44,7 @@ NestJS API
 - Swagger/OpenAPI documentation
 - React + TypeScript dashboard
 - Seeded demo accounts/data
-- Unit tests
+- Unit, integration, and end-to-end API tests
 - Docker Compose
 - GitHub Actions CI
 - Prettier + EditorConfig formatting
@@ -101,13 +101,33 @@ npm run db:seed
 npm run dev
 ```
 
-`npm run dev` regenerates Prisma Client before starting the API and web app, which keeps generated Prisma types in sync after schema changes.
+For normal local development after the initial setup, I use:
+
+```bash
+npm run dev:local
+```
+
+That command applies pending migrations and then starts both the API and web app. `npm run dev` still regenerates Prisma Client automatically before startup.
 
 Open:
 
 - Web app: http://localhost:5173
 - API: http://localhost:4000/api
 - Swagger: http://localhost:4000/docs
+
+## Testing
+
+The API has three test layers:
+
+```bash
+npm test                  # fast unit tests
+npm run test:integration  # real PostgreSQL integration tests
+npm run test:e2e          # full NestJS HTTP workflow tests
+```
+
+The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. This protects a normal development database from the cleanup operations used by the suites.
+
+The end-to-end suite boots the real NestJS module and reuses the same global prefix and validation setup as the running API. It covers authentication, role enforcement, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis. GitHub Actions runs all three test layers before the build step.
 
 ## Receipt storage
 
@@ -255,6 +275,10 @@ I record important domain actions with the actor, entity, action, and structured
 
 I enforce role restrictions at the API layer and mirror those permissions in the frontend so users only see actions that are available to them. The backend remains the source of truth for authorization.
 
+### Test strategy
+
+I keep fast unit tests for isolated behavior, PostgreSQL integration tests for persistence-sensitive logic, and end-to-end tests for HTTP contracts and complete approval workflows. The database suites run serially and clean their own test data so race conditions in the test runner do not hide application-level concurrency problems.
+
 ## Planned improvements
 
 - SSO/SAML/OIDC
@@ -262,7 +286,6 @@ I enforce role restrictions at the API layer and mirror those permissions in the
 - PostgreSQL row-level security as an additional tenant boundary
 - Distributed tracing and structured logging
 - Metrics and queue dashboards
-- Integration and end-to-end test suites
 
 I remove items from this list as I implement them so it reflects the work that is actually still outstanding.
 
@@ -273,14 +296,8 @@ expenseflow/
 ├── apps/
 │   ├── api/
 │   │   ├── prisma/
-│   │   └── src/
-│   │       ├── auth/
-│   │       ├── expenses/
-│   │       ├── approvals/
-│   │       ├── policies/
-│   │       ├── audit/
-│   │       ├── notifications/
-│   │       └── reports/
+│   │   ├── src/
+│   │   └── test/
 │   └── web/
 │       └── src/
 ├── .github/workflows/ci.yml
