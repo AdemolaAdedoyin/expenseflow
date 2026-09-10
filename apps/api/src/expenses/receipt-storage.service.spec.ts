@@ -25,7 +25,7 @@ describe('ReceiptStorageService', () => {
     );
     expect(target.fields.key).toBe(target.objectKey);
     expect(target.fields.Policy).toBeTruthy();
-    expect(target.fields['X-Amz-Signature']).toMatch(/^[a-f0-9]{64}$/);
+    expect(target.fields['x-amz-signature']).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('rejects unsupported receipt content types', () => {
