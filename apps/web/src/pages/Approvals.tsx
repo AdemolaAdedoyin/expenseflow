@@ -4,6 +4,12 @@ import { Approval, ApprovalDecision } from '../types/domain';
 
 const approvalQueryKey = ['approvals'] as const;
 
+type ApprovalDecisionRequest = {
+  id: string;
+  decision: ApprovalDecision;
+  expectedVersion: number;
+};
+
 export default function Approvals() {
   const queryClient = useQueryClient();
 
@@ -13,10 +19,10 @@ export default function Approvals() {
   });
 
   const decide = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: ApprovalDecision }) =>
+    mutationFn: ({ id, decision, expectedVersion }: ApprovalDecisionRequest) =>
       api(`/approvals/${id}/decision`, {
         method: 'POST',
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({ decision, expectedVersion }),
       }),
     onSuccess: async () => {
       await Promise.all([
@@ -24,6 +30,9 @@ export default function Approvals() {
         queryClient.invalidateQueries({ queryKey: ['expenses'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
       ]);
+    },
+    onError: async () => {
+      await queryClient.invalidateQueries({ queryKey: approvalQueryKey });
     },
   });
 
@@ -71,7 +80,13 @@ export default function Approvals() {
                     className="danger"
                     type="button"
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ id: approval.id, decision: 'REJECT' })}
+                    onClick={() =>
+                      decide.mutate({
+                        id: approval.id,
+                        decision: 'REJECT',
+                        expectedVersion: approval.version,
+                      })
+                    }
                   >
                     Reject
                   </button>
@@ -79,7 +94,13 @@ export default function Approvals() {
                     className="primary"
                     type="button"
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ id: approval.id, decision: 'APPROVE' })}
+                    onClick={() =>
+                      decide.mutate({
+                        id: approval.id,
+                        decision: 'APPROVE',
+                        expectedVersion: approval.version,
+                      })
+                    }
                   >
                     Approve
                   </button>
