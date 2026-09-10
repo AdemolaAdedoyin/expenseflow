@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { ObservabilityModule } from './common/observability/observability.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { HealthModule } from './health/health.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OperationsModule } from './operations/operations.module';
 import { PoliciesModule } from './policies/policies.module';
@@ -33,6 +34,7 @@ import { UsersModule } from './users/users.module';
     AuditModule,
     NotificationsModule,
     OperationsModule,
+    HealthModule,
     PoliciesModule,
     ApprovalsModule,
     ExpensesModule,
