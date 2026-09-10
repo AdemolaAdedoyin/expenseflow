@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { PolicyAction, Role } from '@prisma/client';
 import { hash } from 'bcrypt';
-import request from 'supertest';
+import { AddressInfo } from 'net';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -24,9 +24,15 @@ type ApprovalResponse = {
   version: number;
 };
 
+type ApiResponse<T> = {
+  status: number;
+  body: T;
+};
+
 describe('Expense approval workflow e2e', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let baseUrl: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -38,7 +44,12 @@ describe('Expense approval workflow e2e', () => {
 
     // Reuse the same global prefix and validation pipeline as the real server.
     configureApp(app, app.get(ConfigService), { enableSwagger: false });
-    await app.init();
+
+    // Listen on an ephemeral port so the suite exercises the real HTTP stack without
+    // competing with a developer's API process or another CI job.
+    await app.listen(0, '127.0.0.1');
+    const address = app.getHttpServer().address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${address.port}`;
   });
 
   beforeEach(async () => {
@@ -54,90 +65,136 @@ describe('Expense approval workflow e2e', () => {
   it('runs a manager then finance approval flow through the HTTP API', async () => {
     const employeeToken = await login('employee.e2e@demo.com');
 
-    const createResponse = await request(app.getHttpServer())
-      .post('/api/expenses')
-      .set('Authorization', `Bearer ${employeeToken}`)
-      .set('Idempotency-Key', 'e2e-create-expense')
-      .send({
+    const createResponse = await call<ExpenseResponse>('POST', '/api/expenses', {
+      token: employeeToken,
+      idempotencyKey: 'e2e-create-expense',
+      body: {
         merchant: 'E2E Hotel',
         amountCents: 300_000,
         category: 'Travel',
         incurredAt: new Date().toISOString(),
-      })
-      .expect(201);
+      },
+    });
 
-    const created = createResponse.body as ExpenseResponse;
-    expect(created.status).toBe('DRAFT');
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.status).toBe('DRAFT');
 
-    const submitResponse = await request(app.getHttpServer())
-      .post(`/api/expenses/${created.id}/submit`)
-      .set('Authorization', `Bearer ${employeeToken}`)
-      .set('Idempotency-Key', 'e2e-submit-expense')
-      .send({ expectedVersion: created.version })
-      .expect(201);
+    const submitResponse = await call<ExpenseResponse>(
+      'POST',
+      `/api/expenses/${createResponse.body.id}/submit`,
+      {
+        token: employeeToken,
+        idempotencyKey: 'e2e-submit-expense',
+        body: { expectedVersion: createResponse.body.version },
+      },
+    );
 
-    expect((submitResponse.body as ExpenseResponse).status).toBe('PENDING_MANAGER');
+    expect(submitResponse.status).toBe(201);
+    expect(submitResponse.body.status).toBe('PENDING_MANAGER');
 
     const managerToken = await login('manager.e2e@demo.com');
-    const managerInbox = await request(app.getHttpServer())
-      .get('/api/approvals/inbox')
-      .set('Authorization', `Bearer ${managerToken}`)
-      .expect(200);
+    const managerInbox = await call<ApprovalResponse[]>('GET', '/api/approvals/inbox', {
+      token: managerToken,
+    });
 
+    expect(managerInbox.status).toBe(200);
     expect(managerInbox.body).toHaveLength(1);
-    const managerApproval = managerInbox.body[0] as ApprovalResponse;
 
-    const managerDecision = await request(app.getHttpServer())
-      .post(`/api/approvals/${managerApproval.id}/decision`)
-      .set('Authorization', `Bearer ${managerToken}`)
-      .set('Idempotency-Key', 'e2e-manager-approval')
-      .send({ decision: 'APPROVE', expectedVersion: managerApproval.version })
-      .expect(201);
+    const managerApproval = managerInbox.body[0];
+    const managerDecision = await call<ExpenseResponse>(
+      'POST',
+      `/api/approvals/${managerApproval.id}/decision`,
+      {
+        token: managerToken,
+        idempotencyKey: 'e2e-manager-approval',
+        body: { decision: 'APPROVE', expectedVersion: managerApproval.version },
+      },
+    );
 
-    expect((managerDecision.body as ExpenseResponse).status).toBe('PENDING_FINANCE');
+    expect(managerDecision.status).toBe(201);
+    expect(managerDecision.body.status).toBe('PENDING_FINANCE');
 
     const financeToken = await login('finance.e2e@demo.com');
-    const financeInbox = await request(app.getHttpServer())
-      .get('/api/approvals/inbox')
-      .set('Authorization', `Bearer ${financeToken}`)
-      .expect(200);
+    const financeInbox = await call<ApprovalResponse[]>('GET', '/api/approvals/inbox', {
+      token: financeToken,
+    });
 
+    expect(financeInbox.status).toBe(200);
     expect(financeInbox.body).toHaveLength(1);
-    const financeApproval = financeInbox.body[0] as ApprovalResponse;
 
-    const financeDecision = await request(app.getHttpServer())
-      .post(`/api/approvals/${financeApproval.id}/decision`)
-      .set('Authorization', `Bearer ${financeToken}`)
-      .set('Idempotency-Key', 'e2e-finance-approval')
-      .send({ decision: 'APPROVE', expectedVersion: financeApproval.version })
-      .expect(201);
+    const financeApproval = financeInbox.body[0];
+    const financeDecision = await call<ExpenseResponse>(
+      'POST',
+      `/api/approvals/${financeApproval.id}/decision`,
+      {
+        token: financeToken,
+        idempotencyKey: 'e2e-finance-approval',
+        body: { decision: 'APPROVE', expectedVersion: financeApproval.version },
+      },
+    );
 
-    expect((financeDecision.body as ExpenseResponse).status).toBe('APPROVED');
+    expect(financeDecision.status).toBe(201);
+    expect(financeDecision.body.status).toBe('APPROVED');
   });
 
   it('enforces role restrictions at the API boundary', async () => {
     const managerToken = await login('manager.e2e@demo.com');
-
-    await request(app.getHttpServer())
-      .post('/api/expenses')
-      .set('Authorization', `Bearer ${managerToken}`)
-      .set('Idempotency-Key', 'manager-cannot-create')
-      .send({
+    const response = await call('POST', '/api/expenses', {
+      token: managerToken,
+      idempotencyKey: 'manager-cannot-create',
+      body: {
         merchant: 'Forbidden expense',
         amountCents: 5_000,
         category: 'Travel',
         incurredAt: new Date().toISOString(),
-      })
-      .expect(403);
+      },
+    });
+
+    expect(response.status).toBe(403);
   });
 
   async function login(email: string) {
-    const response = await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ email, password: 'Password123!' })
-      .expect(201);
+    const response = await call<LoginResponse>('POST', '/api/auth/login', {
+      body: { email, password: 'Password123!' },
+    });
 
-    return (response.body as LoginResponse).accessToken;
+    expect(response.status).toBe(201);
+    return response.body.accessToken;
+  }
+
+  async function call<T = unknown>(
+    method: string,
+    path: string,
+    options: {
+      token?: string;
+      idempotencyKey?: string;
+      body?: unknown;
+    } = {},
+  ): Promise<ApiResponse<T>> {
+    const headers = new Headers({ Accept: 'application/json' });
+
+    if (options.token) {
+      headers.set('Authorization', `Bearer ${options.token}`);
+    }
+
+    if (options.idempotencyKey) {
+      headers.set('Idempotency-Key', options.idempotencyKey);
+    }
+
+    if (options.body !== undefined) {
+      headers.set('Content-Type', 'application/json');
+    }
+
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+
+    const text = await response.text();
+    const body = (text ? JSON.parse(text) : undefined) as T;
+
+    return { status: response.status, body };
   }
 
   async function seedWorkflowUsers() {
