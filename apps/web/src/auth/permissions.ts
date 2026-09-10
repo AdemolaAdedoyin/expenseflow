@@ -10,7 +10,8 @@ export type Permission =
   | 'policy:manage'
   | 'audit:read'
   | 'report:read'
-  | 'user:read';
+  | 'user:read'
+  | 'operations:read';
 
 const rolePermissions: Record<UserRole, readonly Permission[]> = {
   EMPLOYEE: [
@@ -30,6 +31,7 @@ const rolePermissions: Record<UserRole, readonly Permission[]> = {
     'audit:read',
     'report:read',
     'user:read',
+    'operations:read',
   ],
   ADMIN: [
     'expense:read',
@@ -39,6 +41,7 @@ const rolePermissions: Record<UserRole, readonly Permission[]> = {
     'audit:read',
     'report:read',
     'user:read',
+    'operations:read',
   ],
 };
 
