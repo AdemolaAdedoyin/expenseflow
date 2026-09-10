@@ -1,11 +1,23 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from 'react';
-
-const ACCESS_TOKEN_KEY = 'token';
+import {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import {
+  endSession,
+  getAccessToken,
+  refreshSession,
+  setAccessToken as persistAccessToken,
+} from '../lib/api';
 
 type AuthContextValue = {
   accessToken: string | null;
+  isInitializing: boolean;
   login: (token: string) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -15,23 +27,53 @@ type AuthProviderProps = {
 };
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [accessToken, setAccessToken] = useState<string | null>(() =>
-    localStorage.getItem(ACCESS_TOKEN_KEY),
-  );
+  const initialToken = getAccessToken();
+  const [accessToken, setAccessToken] = useState<string | null>(initialToken);
+  const [isInitializing, setIsInitializing] = useState(!initialToken);
+
+  useEffect(() => {
+    if (initialToken) {
+      return;
+    }
+
+    let active = true;
+
+    refreshSession()
+      .then((token) => {
+        if (active) {
+          setAccessToken(token);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAccessToken(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsInitializing(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [initialToken]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       accessToken,
+      isInitializing,
       login(token: string) {
-        localStorage.setItem(ACCESS_TOKEN_KEY, token);
+        persistAccessToken(token);
         setAccessToken(token);
       },
-      logout() {
-        localStorage.removeItem(ACCESS_TOKEN_KEY);
+      async logout() {
+        await endSession();
         setAccessToken(null);
       },
     }),
-    [accessToken],
+    [accessToken, isInitializing],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
