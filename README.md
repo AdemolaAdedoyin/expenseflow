@@ -1,6 +1,6 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, private file handling, resilient mutations, and background email delivery.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, and background email delivery.
 
 ## Architecture
 
@@ -34,6 +34,7 @@ NestJS API
 - Automatic policy rejection
 - Transactional state changes
 - Idempotency keys for state-changing API requests
+- Optimistic locking for expense and approval state transitions
 - Audit events for important domain actions
 - BullMQ/Redis background notification processing with retries
 - Pluggable email provider with Amazon SES delivery and console fallback
@@ -206,6 +207,8 @@ GET    /api/reports/dashboard
 
 Mutation endpoints marked as idempotent require an `Idempotency-Key` header. The web client generates one automatically and preserves it across an access-token refresh/retry.
 
+State-sensitive expense and approval mutations also send an `expectedVersion`. If another request has already changed the resource, the API returns HTTP 409 instead of overwriting the newer state.
+
 ## Design notes
 
 ### Tenant isolation
@@ -236,6 +239,10 @@ I use Prisma transactions when a submission or approval decision needs multiple 
 
 I require idempotency keys on important state-changing endpoints such as expense creation/submission, receipt attachment, approval decisions, and policy mutations. I reserve each key before executing the mutation, scope it to the tenant and authenticated actor, hash the method/path/body, and persist the completed response for 24 hours. Replaying the same request returns the original response, while reusing the same key for different request data is rejected. If the original request fails, I release the reservation so a legitimate retry can run again.
 
+### Optimistic concurrency control
+
+I version expenses and approvals that participate in workflow transitions. The client sends the version it last read, and the API updates rows only when that version and the expected workflow state still match. Successful mutations increment the version. If two different requests try to submit or decide the same workflow item concurrently, only the first matching update succeeds; the stale request receives HTTP 409 and is prompted to refresh rather than silently overwriting a newer decision. I use this alongside idempotency because they solve different problems: idempotency makes retries safe, while optimistic locking protects against competing requests with different idempotency keys.
+
 ### Async jobs and email
 
 I enqueue notifications through BullMQ instead of performing provider calls in the HTTP request path. The worker uses a provider abstraction: console delivery is the local default, while Amazon SES provides real delivery in configured environments. Provider failures bubble back to BullMQ so the queue's retry and exponential-backoff policy remains responsible for transient delivery failures.
@@ -255,7 +262,6 @@ I enforce role restrictions at the API layer and mirror those permissions in the
 - PostgreSQL row-level security as an additional tenant boundary
 - Distributed tracing and structured logging
 - Metrics and queue dashboards
-- Optimistic locking/versioning for high-contention workflows
 - Integration and end-to-end test suites
 
 I remove items from this list as I implement them so it reflects the work that is actually still outstanding.

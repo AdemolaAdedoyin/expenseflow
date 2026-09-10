@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -21,6 +22,7 @@ import {
   CreateExpenseDto,
   ListExpensesQuery,
   PrepareReceiptUploadDto,
+  SubmitExpenseDto,
 } from './dto';
 import { ReceiptStorageService } from './receipt-storage.service';
 
@@ -160,19 +162,37 @@ export class ExpensesService {
   }
 
   async completeReceiptUpload(user: AuthUser, id: string, dto: CompleteReceiptUploadDto) {
-    await this.getOwnedDraftExpense(user, id);
+    const current = await this.getOwnedDraftExpense(user, id);
+
+    if (current.version !== dto.expectedVersion) {
+      throw this.staleExpenseConflict();
+    }
+
     this.receiptStorage.assertObjectBelongsToExpense(
       user.organizationId,
       id,
       dto.objectKey,
     );
 
-    const expense = await this.prisma.expense.update({
-      where: { id },
+    const updated = await this.prisma.expense.updateMany({
+      where: {
+        id,
+        organizationId: user.organizationId,
+        userId: user.sub,
+        status: ExpenseStatus.DRAFT,
+        version: dto.expectedVersion,
+      },
       data: {
         receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
+        version: { increment: 1 },
       },
     });
+
+    if (updated.count !== 1) {
+      throw this.staleExpenseConflict();
+    }
+
+    const expense = await this.prisma.expense.findUniqueOrThrow({ where: { id } });
 
     await this.audit.write({
       organizationId: user.organizationId,
@@ -180,7 +200,7 @@ export class ExpensesService {
       entityType: 'Expense',
       entityId: id,
       action: 'expense.receipt_attached',
-      metadata: { objectKey: dto.objectKey },
+      metadata: { objectKey: dto.objectKey, version: expense.version },
     });
 
     return expense;
@@ -197,7 +217,7 @@ export class ExpensesService {
     return this.receiptStorage.createDownloadUrl(objectKey);
   }
 
-  async submit(user: AuthUser, id: string) {
+  async submit(user: AuthUser, id: string, dto: SubmitExpenseDto) {
     const expense = await this.prisma.expense.findFirst({
       where: {
         id,
@@ -213,6 +233,10 @@ export class ExpensesService {
 
     if (expense.status !== ExpenseStatus.DRAFT) {
       throw new BadRequestException('Only draft expenses can be submitted');
+    }
+
+    if (expense.version !== dto.expectedVersion) {
+      throw this.staleExpenseConflict();
     }
 
     const evaluation = await this.policies.evaluate(
@@ -239,11 +263,18 @@ export class ExpensesService {
     const status = this.resolveSubmissionStatus(evaluation);
 
     const updated = await this.prisma.$transaction(async (transaction) => {
-      const result = await transaction.expense.update({
-        where: { id },
+      const changed = await transaction.expense.updateMany({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+          status: ExpenseStatus.DRAFT,
+          version: dto.expectedVersion,
+        },
         data: {
           status,
           submittedAt: new Date(),
+          version: { increment: 1 },
           ...(status === ExpenseStatus.APPROVED || status === ExpenseStatus.REJECTED
             ? { decidedAt: new Date() }
             : {}),
@@ -252,6 +283,10 @@ export class ExpensesService {
             : {}),
         },
       });
+
+      if (changed.count !== 1) {
+        throw this.staleExpenseConflict();
+      }
 
       if (!evaluation.autoReject && evaluation.requireManager && manager) {
         await transaction.approval.create({
@@ -277,7 +312,7 @@ export class ExpensesService {
         });
       }
 
-      return result;
+      return transaction.expense.findUniqueOrThrow({ where: { id } });
     });
 
     await this.audit.write({
@@ -288,6 +323,7 @@ export class ExpensesService {
       action: 'expense.submitted',
       metadata: {
         status,
+        version: updated.version,
         matchedPolicyIds: evaluation.matchedPolicyIds,
       },
     });
@@ -333,6 +369,12 @@ export class ExpensesService {
     }
 
     return expense;
+  }
+
+  private staleExpenseConflict() {
+    return new ConflictException(
+      'This expense changed after you loaded it. Refresh the page and try again.',
+    );
   }
 
   private async findManagerApprover(organizationId: string, managerId: string | null) {

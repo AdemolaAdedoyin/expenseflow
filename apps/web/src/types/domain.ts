@@ -21,6 +21,7 @@ export type Expense = {
   receiptUrl?: string | null;
   incurredAt: string;
   status: ExpenseStatus;
+  version: number;
   user?: ExpenseUser;
 };
 
@@ -56,6 +57,7 @@ export type Approval = {
   id: string;
   level: 'MANAGER' | 'FINANCE';
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED';
+  version: number;
   expense: Expense & {
     user: ExpenseUser;
   };
