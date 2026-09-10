@@ -74,6 +74,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
       body: request.body ?? null,
     });
 
+    // Reserving the key before the handler runs closes the race where two concurrent
+    // requests with the same key could both reach the domain service.
     const claim = await this.idempotency.claim({
       organizationId: user.organizationId,
       actorId: user.sub,
@@ -83,6 +85,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
       requestHash,
     });
 
+    // A completed claim is safe to replay because the stored request fingerprint must
+    // match the current method, path, and body before claim() returns this branch.
     if (claim.kind === 'replay') {
       response.status(claim.responseStatus);
       return of(claim.responseBody);
@@ -95,6 +99,8 @@ export class IdempotencyInterceptor implements NestInterceptor {
         ),
       ),
       catchError((error) =>
+        // Failed requests do not consume the key permanently. Releasing a pending claim
+        // lets a legitimate client retry after a transient failure.
         from(this.idempotency.release(claim.recordId)).pipe(
           mergeMap(() => throwError(() => error)),
         ),
