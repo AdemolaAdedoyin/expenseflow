@@ -62,10 +62,16 @@ function approvalFixture() {
 
 describe('ApprovalsService optimistic locking', () => {
   it('rejects a decision made from a stale approval version', async () => {
-    const prisma = {
+    const transaction = {
       approval: {
         findFirst: jest.fn().mockResolvedValue(approvalFixture()),
       },
+    };
+    const prisma = {
+      withTenant: jest.fn(
+        async (_organizationId: string, callback: (tx: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
     } as unknown as PrismaService;
 
     const service = new ApprovalsService(
@@ -85,16 +91,15 @@ describe('ApprovalsService optimistic locking', () => {
   it('rejects a competing decision when the compare-and-swap update loses', async () => {
     const transaction = {
       approval: {
+        findFirst: jest.fn().mockResolvedValue(approvalFixture()),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
     };
 
     const prisma = {
-      approval: {
-        findFirst: jest.fn().mockResolvedValue(approvalFixture()),
-      },
-      $transaction: jest.fn(
-        async (callback: (tx: typeof transaction) => Promise<unknown>) => callback(transaction),
+      withTenant: jest.fn(
+        async (_organizationId: string, callback: (tx: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
       ),
     } as unknown as PrismaService;
 
