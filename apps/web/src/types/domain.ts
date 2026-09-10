@@ -18,6 +18,7 @@ export type Expense = {
   currency: string;
   category: string;
   description?: string | null;
+  receiptUrl?: string | null;
   incurredAt: string;
   status: ExpenseStatus;
   user?: ExpenseUser;
@@ -37,6 +38,18 @@ export type CreateExpensePayload = {
   category: string;
   description?: string;
   incurredAt: string;
+};
+
+export type ReceiptUploadTarget = {
+  objectKey: string;
+  uploadUrl: string;
+  fields: Record<string, string>;
+  expiresInSeconds: number;
+};
+
+export type ReceiptDownload = {
+  downloadUrl: string;
+  expiresInSeconds: number;
 };
 
 export type Approval = {
