@@ -16,6 +16,21 @@ function LoginRoute() {
 }
 
 function AppRoutes() {
+  const { isInitializing } = useAuth();
+
+  if (isInitializing) {
+    return (
+      <div className="login-wrap">
+        <div className="login-card">
+          <div className="brand big">
+            Expense<span>Flow</span>
+          </div>
+          <p>Restoring your session...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
