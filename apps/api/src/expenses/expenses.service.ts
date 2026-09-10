@@ -16,7 +16,13 @@ import { AuthUser } from '../common/decorators/current-user.decorator';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PoliciesService } from '../policies/policies.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateExpenseDto, ListExpensesQuery } from './dto';
+import {
+  CompleteReceiptUploadDto,
+  CreateExpenseDto,
+  ListExpensesQuery,
+  PrepareReceiptUploadDto,
+} from './dto';
+import { ReceiptStorageService } from './receipt-storage.service';
 
 @Injectable()
 export class ExpensesService {
@@ -25,6 +31,7 @@ export class ExpensesService {
     private readonly policies: PoliciesService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly receiptStorage: ReceiptStorageService,
   ) {}
 
   async create(user: AuthUser, dto: CreateExpenseDto) {
@@ -140,6 +147,54 @@ export class ExpensesService {
     }
 
     return expense;
+  }
+
+  async prepareReceiptUpload(user: AuthUser, id: string, dto: PrepareReceiptUploadDto) {
+    await this.getOwnedDraftExpense(user, id);
+
+    return this.receiptStorage.createUploadTarget(
+      user.organizationId,
+      id,
+      dto.contentType,
+    );
+  }
+
+  async completeReceiptUpload(user: AuthUser, id: string, dto: CompleteReceiptUploadDto) {
+    await this.getOwnedDraftExpense(user, id);
+    this.receiptStorage.assertObjectBelongsToExpense(
+      user.organizationId,
+      id,
+      dto.objectKey,
+    );
+
+    const expense = await this.prisma.expense.update({
+      where: { id },
+      data: {
+        receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
+      },
+    });
+
+    await this.audit.write({
+      organizationId: user.organizationId,
+      actorId: user.sub,
+      entityType: 'Expense',
+      entityId: id,
+      action: 'expense.receipt_attached',
+      metadata: { objectKey: dto.objectKey },
+    });
+
+    return expense;
+  }
+
+  async getReceiptDownload(user: AuthUser, id: string) {
+    const expense = await this.get(user, id);
+
+    if (!expense.receiptUrl) {
+      throw new NotFoundException('This expense does not have a receipt');
+    }
+
+    const objectKey = this.receiptStorage.objectKeyFromStorageUri(expense.receiptUrl);
+    return this.receiptStorage.createDownloadUrl(objectKey);
   }
 
   async submit(user: AuthUser, id: string) {
@@ -258,6 +313,26 @@ export class ExpensesService {
     }
 
     return updated;
+  }
+
+  private async getOwnedDraftExpense(user: AuthUser, id: string) {
+    const expense = await this.prisma.expense.findFirst({
+      where: {
+        id,
+        organizationId: user.organizationId,
+        userId: user.sub,
+      },
+    });
+
+    if (!expense) {
+      throw new NotFoundException('Expense not found');
+    }
+
+    if (expense.status !== ExpenseStatus.DRAFT) {
+      throw new BadRequestException('Receipts can only be changed while an expense is a draft');
+    }
+
+    return expense;
   }
 
   private async findManagerApprover(organizationId: string, managerId: string | null) {

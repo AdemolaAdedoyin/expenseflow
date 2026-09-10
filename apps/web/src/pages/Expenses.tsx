@@ -2,10 +2,23 @@ import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import { api, money } from '../lib/api';
-import { CreateExpensePayload, Expense, PaginatedExpenses } from '../types/domain';
+import {
+  CreateExpensePayload,
+  Expense,
+  PaginatedExpenses,
+  ReceiptDownload,
+  ReceiptUploadTarget,
+} from '../types/domain';
 
 const expenseQueryKey = ['expenses'] as const;
 const dashboardQueryKey = ['dashboard'] as const;
+const acceptedReceiptTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+const maxReceiptBytes = 10 * 1024 * 1024;
+
+type CreateExpenseRequest = {
+  payload: CreateExpensePayload;
+  receipt?: File;
+};
 
 export default function Expenses() {
   const queryClient = useQueryClient();
@@ -20,11 +33,43 @@ export default function Expenses() {
   });
 
   const createExpense = useMutation({
-    mutationFn: (payload: CreateExpensePayload) =>
-      api<Expense>('/expenses', {
+    mutationFn: async ({ payload, receipt }: CreateExpenseRequest) => {
+      const expense = await api<Expense>('/expenses', {
         method: 'POST',
         body: JSON.stringify(payload),
-      }),
+      });
+
+      if (!receipt) {
+        return expense;
+      }
+
+      const target = await api<ReceiptUploadTarget>(`/expenses/${expense.id}/receipt-upload`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: receipt.name,
+          contentType: receipt.type,
+          sizeBytes: receipt.size,
+        }),
+      });
+
+      const uploadForm = new FormData();
+      Object.entries(target.fields).forEach(([key, value]) => uploadForm.append(key, value));
+      uploadForm.append('file', receipt);
+
+      const uploadResponse = await fetch(target.uploadUrl, {
+        method: 'POST',
+        body: uploadForm,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error('The expense was saved, but the receipt upload failed.');
+      }
+
+      return api<Expense>(`/expenses/${expense.id}/receipt-upload/complete`, {
+        method: 'POST',
+        body: JSON.stringify({ objectKey: target.objectKey }),
+      });
+    },
     onSuccess: async () => {
       setShowForm(false);
       await Promise.all([
@@ -48,22 +93,46 @@ export default function Expenses() {
     },
   });
 
+  const openReceipt = useMutation({
+    mutationFn: (id: string) => api<ReceiptDownload>(`/expenses/${id}/receipt`),
+    onSuccess: ({ downloadUrl }) => {
+      window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    },
+  });
+
   function saveExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const form = new FormData(event.currentTarget);
     const amount = Number(form.get('amount'));
+    const receiptValue = form.get('receipt');
+    const receipt = receiptValue instanceof File && receiptValue.size > 0 ? receiptValue : undefined;
+
+    if (receipt && !acceptedReceiptTypes.includes(receipt.type)) {
+      createExpense.reset();
+      window.alert('Receipt must be a JPEG, PNG, or PDF file.');
+      return;
+    }
+
+    if (receipt && receipt.size > maxReceiptBytes) {
+      createExpense.reset();
+      window.alert('Receipt must be 10 MB or smaller.');
+      return;
+    }
 
     createExpense.mutate({
-      merchant: String(form.get('merchant')),
-      amountCents: Math.round(amount * 100),
-      category: String(form.get('category')),
-      description: String(form.get('description') ?? ''),
-      incurredAt: new Date(String(form.get('incurredAt'))).toISOString(),
+      payload: {
+        merchant: String(form.get('merchant')),
+        amountCents: Math.round(amount * 100),
+        category: String(form.get('category')),
+        description: String(form.get('description') ?? ''),
+        incurredAt: new Date(String(form.get('incurredAt'))).toISOString(),
+      },
+      receipt,
     });
   }
 
-  const mutationError = createExpense.error ?? submitExpense.error;
+  const mutationError = createExpense.error ?? submitExpense.error ?? openReceipt.error;
 
   return (
     <section>
@@ -101,6 +170,10 @@ export default function Expenses() {
             defaultValue={new Date().toISOString().slice(0, 10)}
           />
           <input className="wide" name="description" placeholder="Description" />
+          <label className="wide receipt-field">
+            <span>Receipt <small>optional · JPEG, PNG, or PDF · max 10 MB</small></span>
+            <input name="receipt" type="file" accept="image/jpeg,image/png,application/pdf" />
+          </label>
           <button className="primary" type="submit" disabled={createExpense.isPending}>
             {createExpense.isPending ? 'Saving...' : 'Save draft'}
           </button>
@@ -141,7 +214,17 @@ export default function Expenses() {
                 {expense.status.replaceAll('_', ' ')}
               </em>
             </span>
-            <span>
+            <span className="expense-actions">
+              {expense.receiptUrl && (
+                <button
+                  className="link"
+                  type="button"
+                  disabled={openReceipt.isPending}
+                  onClick={() => openReceipt.mutate(expense.id)}
+                >
+                  Receipt
+                </button>
+              )}
               {canCreateExpenses && expense.status === 'DRAFT' && (
                 <button
                   className="link"

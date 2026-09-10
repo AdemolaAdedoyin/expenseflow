@@ -5,7 +5,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
-import { CreateExpenseDto, ListExpensesQuery } from './dto';
+import {
+  CompleteReceiptUploadDto,
+  CreateExpenseDto,
+  ListExpensesQuery,
+  PrepareReceiptUploadDto,
+} from './dto';
 import { ExpensesService } from './expenses.service';
 
 @ApiTags('expenses')
@@ -29,6 +34,31 @@ export class ExpensesController {
   @Get(':id')
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.expenses.get(user, id);
+  }
+
+  @Post(':id/receipt-upload')
+  @Roles(Role.EMPLOYEE)
+  prepareReceiptUpload(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: PrepareReceiptUploadDto,
+  ) {
+    return this.expenses.prepareReceiptUpload(user, id, dto);
+  }
+
+  @Post(':id/receipt-upload/complete')
+  @Roles(Role.EMPLOYEE)
+  completeReceiptUpload(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: CompleteReceiptUploadDto,
+  ) {
+    return this.expenses.completeReceiptUpload(user, id, dto);
+  }
+
+  @Get(':id/receipt')
+  receipt(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.expenses.getReceiptDownload(user, id);
   }
 
   @Post(':id/submit')

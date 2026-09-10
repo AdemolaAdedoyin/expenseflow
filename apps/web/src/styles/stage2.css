@@ -30,6 +30,37 @@ button:disabled {
   color: var(--muted);
 }
 
+.receipt-field {
+  display: grid;
+  gap: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.receipt-field span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.receipt-field small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.receipt-field input[type='file'] {
+  padding: 8px 10px;
+}
+
+.expense-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
 @media (max-width: 700px) {
   .heading {
     align-items: stretch;
@@ -38,5 +69,11 @@ button:disabled {
 
   .heading > .primary {
     width: 100%;
+  }
+
+  .receipt-field span {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 }

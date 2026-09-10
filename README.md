@@ -1,6 +1,6 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, and tenant isolation.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, and private file handling.
 
 ## Architecture
 
@@ -10,6 +10,8 @@ React / TypeScript
       | REST + JWT
       v
 NestJS API
+  |        |         |          |
+  |        |         |          +--> S3 private receipt storage
   |        |         |
   |        |         +--> BullMQ --> Redis --> Notification worker
   |        |
@@ -26,6 +28,7 @@ NestJS API
 - HttpOnly refresh-token cookies
 - RBAC: Admin, Finance, Manager, Employee
 - Expense drafts and submission workflow
+- Private S3 receipt storage with pre-signed upload and download access
 - Configurable policy engine
 - Multi-stage Manager -> Finance approval routing
 - Automatic policy rejection
@@ -75,6 +78,8 @@ $175 Meals expense
 
 **Frontend:** React, TypeScript, Vite, TanStack Query, React Router
 
+**Storage:** Amazon S3 with private objects and short-lived pre-signed access
+
 **Platform:** Docker Compose, GitHub Actions
 
 ## Quick start
@@ -96,6 +101,36 @@ Open:
 - Web app: http://localhost:5173
 - API: http://localhost:4000/api
 - Swagger: http://localhost:4000/docs
+
+## Receipt storage
+
+Receipt uploads are optional. The rest of the application runs without AWS credentials, but uploading or opening a receipt requires these values:
+
+```text
+AWS_REGION
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+S3_RECEIPTS_BUCKET
+```
+
+`AWS_SESSION_TOKEN` is also supported when I use temporary AWS credentials.
+
+I keep the S3 bucket private. The browser never receives AWS credentials. The API creates a five-minute pre-signed POST policy for JPEG, PNG, and PDF receipts up to 10 MB, and it generates a separate five-minute pre-signed GET URL when an authorized user opens a receipt. Object keys are scoped by organization and expense.
+
+For browser uploads, the S3 bucket needs CORS that permits the web application's origin to send `POST` requests. For local development, an example is:
+
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["POST"],
+    "AllowedOrigins": ["http://localhost:5173"],
+    "ExposeHeaders": []
+  }
+]
+```
+
+The AWS principal used by the API should be limited to the receipt bucket and only the object operations the application needs rather than broad S3 access.
 
 ## Demo users
 
@@ -123,6 +158,9 @@ GET    /api/users
 POST   /api/expenses
 GET    /api/expenses
 GET    /api/expenses/:id
+POST   /api/expenses/:id/receipt-upload
+POST   /api/expenses/:id/receipt-upload/complete
+GET    /api/expenses/:id/receipt
 POST   /api/expenses/:id/submit
 
 GET    /api/approvals/inbox
@@ -145,6 +183,10 @@ I carry the authenticated user's `organizationId` in the JWT and scope business 
 ### Authentication and sessions
 
 I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. I store only a SHA-256 hash of each refresh token in PostgreSQL. Each successful refresh revokes the old session token and creates a replacement, so a refresh token cannot be reused indefinitely. Signing out revokes the current session, and the API also supports revoking every active session for a user.
+
+### Receipt storage
+
+I upload receipts directly from the browser to a private S3 bucket instead of proxying file bytes through the API. The API creates a short-lived signed POST policy after checking the expense owner, draft state, content type, and declared file size. After S3 accepts the upload, the client completes the attachment with the API, which validates that the object key belongs to that organization and expense before storing its S3 URI. Authorized receipt reads use short-lived signed GET URLs.
 
 ### Approval state machine
 
@@ -173,7 +215,6 @@ I enforce role restrictions at the API layer and mirror those permissions in the
 ## Planned improvements
 
 - SSO/SAML/OIDC
-- Object storage + pre-signed receipt uploads
 - Real email provider adapter
 - Fine-grained permissions rather than role-only RBAC
 - PostgreSQL row-level security as an additional tenant boundary
