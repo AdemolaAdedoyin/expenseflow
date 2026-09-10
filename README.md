@@ -1,13 +1,13 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. The project goes beyond CRUD and focuses on authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, background email delivery, and operational visibility.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. The project goes beyond CRUD and focuses on authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, background email delivery, enterprise authentication, and operational visibility.
 
 ## Architecture
 
 ```text
 React / TypeScript
       |
-      | REST + JWT
+      | REST + JWT / OIDC SSO
       v
 NestJS API
   |        |         |          |
@@ -25,6 +25,8 @@ NestJS API
 - Multi-tenant organization scoping
 - PostgreSQL row-level security on tenant-owned business records
 - Short-lived JWT access tokens with rotating, revocable refresh sessions
+- Generic OpenID Connect SSO using Authorization Code + PKCE
+- OIDC discovery, state/nonce validation, JWKS signature verification, and existing-user linking
 - HttpOnly refresh-token cookies
 - Capability-based authorization for Admin, Finance, Manager, and Employee roles
 - Global API rate limiting with stricter authentication limits
@@ -81,6 +83,8 @@ $175 Meals expense
 
 **Email:** Amazon SES with a local console provider fallback
 
+**Authentication:** Local credentials plus standards-based OpenID Connect SSO
+
 **Platform:** Docker Compose, GitHub Actions
 
 ## Quick start
@@ -128,6 +132,33 @@ The integration suite also creates a temporary low-privilege PostgreSQL role to 
 I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. Only a SHA-256 hash of each refresh token is stored in PostgreSQL. Refreshing rotates the session token, signing out revokes the current session, and the API can revoke all active sessions for a user.
 
 I authorize endpoints using named business capabilities such as `expense:create`, `expense:submit`, `approval:review`, and `policy:manage`. I mirror those checks in React for navigation and actions, while the NestJS permission guard remains the authorization boundary.
+
+### OpenID Connect SSO
+
+I support standards-based OIDC SSO without coupling the application to one identity vendor. The login uses the Authorization Code flow with PKCE, a random state value, and a nonce. The API discovers provider endpoints from the issuer's `/.well-known/openid-configuration`, exchanges the code server-side, verifies the RS256 ID-token signature against the provider's JWKS, and validates issuer, audience, expiry, nonce, and verified email claims.
+
+I keep the PKCE verifier and nonce in a short-lived, HMAC-protected HttpOnly cookie during the provider round trip. After a successful callback, the API creates the same revocable ExpenseFlow session used by password login and redirects to the web app without placing access or refresh tokens in the URL.
+
+SSO only links to an existing ExpenseFlow user in one explicitly configured organization. I do not auto-provision roles or tenant membership from identity-provider claims.
+
+To enable it, register this callback URL with an OIDC provider:
+
+```text
+http://localhost:4000/api/auth/sso/callback
+```
+
+Then configure:
+
+```text
+OIDC_ENABLED=true
+OIDC_ISSUER_URL=https://your-provider.example.com
+OIDC_CLIENT_ID=...
+OIDC_CLIENT_SECRET=...
+OIDC_REDIRECT_URI=http://localhost:4000/api/auth/sso/callback
+OIDC_ORGANIZATION_SLUG=acme-labs
+```
+
+The client secret is optional for providers that support a public PKCE client. The configured provider must issue RS256-signed ID tokens containing an email claim. When SSO is disabled, the normal demo login behaves exactly as before.
 
 ## Tenant isolation
 
@@ -198,6 +229,9 @@ All demo users use password `Password123!`.
 
 ```text
 POST   /api/auth/login
+GET    /api/auth/sso/config
+GET    /api/auth/sso/start
+GET    /api/auth/sso/callback
 POST   /api/auth/refresh
 POST   /api/auth/logout
 POST   /api/auth/logout-all
@@ -224,12 +258,6 @@ GET    /api/operations/overview
 GET    /api/health/live
 GET    /api/health/ready
 ```
-
-## Planned improvements
-
-- SSO/SAML/OIDC
-
-I remove items from this list as I implement them so it reflects work that is actually still outstanding.
 
 ## Repository layout
 
