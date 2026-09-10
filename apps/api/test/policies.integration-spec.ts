@@ -1,10 +1,13 @@
-import { PolicyAction, PrismaClient } from '@prisma/client';
+import { PolicyAction } from '@prisma/client';
 import { PoliciesService } from '../src/policies/policies.service';
+import { PrismaService } from '../src/prisma/prisma.service';
 import { clearDatabase } from './test-db';
 
 describe('PoliciesService integration', () => {
-  const prisma = new PrismaClient();
-  const service = new PoliciesService(prisma as never);
+  // Use the same PrismaService abstraction as production so the integration test
+  // exercises tenant context setup instead of bypassing it with a raw PrismaClient.
+  const prisma = new PrismaService();
+  const service = new PoliciesService(prisma);
 
   beforeAll(async () => {
     await prisma.$connect();
