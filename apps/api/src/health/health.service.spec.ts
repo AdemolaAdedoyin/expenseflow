@@ -10,14 +10,10 @@ describe('HealthService', () => {
       ),
     } as unknown as PrismaService;
 
-    const client = {
-      ping: jest.fn().mockImplementation(() =>
-        options?.redisFails ? Promise.reject(new Error('redis down')) : Promise.resolve('PONG'),
-      ),
-    };
-
     const queue = {
-      client: Promise.resolve(client),
+      getJobCounts: jest.fn().mockImplementation(() =>
+        options?.redisFails ? Promise.reject(new Error('redis down')) : Promise.resolve({ waiting: 0 }),
+      ),
     } as unknown as Queue;
 
     return new HealthService(prisma, queue);
