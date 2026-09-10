@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -131,7 +132,7 @@ export class AuthController {
       : undefined;
 
     if (!token && required) {
-      throw new Error('Refresh token cookie is missing');
+      throw new UnauthorizedException('Refresh token cookie is missing');
     }
 
     return token as string;
