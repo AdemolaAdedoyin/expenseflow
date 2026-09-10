@@ -7,6 +7,7 @@ import Approvals from './pages/Approvals';
 import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';
 import Login from './pages/Login';
+import Operations from './pages/Operations';
 import Policies from './pages/Policies';
 
 function LoginRoute() {
@@ -43,6 +44,10 @@ function AppRoutes() {
 
           <Route element={<PermissionRoute permission="approval:review" />}>
             <Route path="approvals" element={<Approvals />} />
+          </Route>
+
+          <Route element={<PermissionRoute permission="operations:read" />}>
+            <Route path="operations" element={<Operations />} />
           </Route>
         </Route>
       </Route>
