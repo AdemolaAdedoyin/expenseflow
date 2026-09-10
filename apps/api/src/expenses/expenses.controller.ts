@@ -1,11 +1,11 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
 import { Idempotent } from '../common/idempotency/idempotent.decorator';
+import { RequirePermissions } from '../common/permissions/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions/permissions.guard';
+import { Permission } from '../common/permissions/permissions';
 import {
   CompleteReceiptUploadDto,
   CreateExpenseDto,
@@ -17,30 +17,32 @@ import { ExpensesService } from './expenses.service';
 
 @ApiTags('expenses')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('expenses')
 export class ExpensesController {
   constructor(private readonly expenses: ExpensesService) {}
 
   @Post()
-  @Roles(Role.EMPLOYEE)
+  @RequirePermissions(Permission.EXPENSE_CREATE)
   @Idempotent()
   create(@CurrentUser() user: AuthUser, @Body() dto: CreateExpenseDto) {
     return this.expenses.create(user, dto);
   }
 
   @Get()
+  @RequirePermissions(Permission.EXPENSE_READ)
   list(@CurrentUser() user: AuthUser, @Query() query: ListExpensesQuery) {
     return this.expenses.list(user, query);
   }
 
   @Get(':id')
+  @RequirePermissions(Permission.EXPENSE_READ)
   get(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.expenses.get(user, id);
   }
 
   @Post(':id/receipt-upload')
-  @Roles(Role.EMPLOYEE)
+  @RequirePermissions(Permission.RECEIPT_MANAGE)
   @Idempotent()
   prepareReceiptUpload(
     @CurrentUser() user: AuthUser,
@@ -51,7 +53,7 @@ export class ExpensesController {
   }
 
   @Post(':id/receipt-upload/complete')
-  @Roles(Role.EMPLOYEE)
+  @RequirePermissions(Permission.RECEIPT_MANAGE)
   @Idempotent()
   completeReceiptUpload(
     @CurrentUser() user: AuthUser,
@@ -62,12 +64,13 @@ export class ExpensesController {
   }
 
   @Get(':id/receipt')
+  @RequirePermissions(Permission.EXPENSE_READ)
   receipt(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.expenses.getReceiptDownload(user, id);
   }
 
   @Post(':id/submit')
-  @Roles(Role.EMPLOYEE)
+  @RequirePermissions(Permission.EXPENSE_SUBMIT)
   @Idempotent()
   submit(
     @CurrentUser() user: AuthUser,

@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hasPermission } from '../auth/permissions';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import { api, money } from '../lib/api';
 import {
@@ -30,7 +31,8 @@ export default function Expenses() {
   const { data: user } = useCurrentUser();
   const [showForm, setShowForm] = useState(false);
 
-  const canCreateExpenses = user?.role === 'EMPLOYEE';
+  const canCreateExpenses = user ? hasPermission(user.role, 'expense:create') : false;
+  const canSubmitExpenses = user ? hasPermission(user.role, 'expense:submit') : false;
 
   const { data, isLoading, error } = useQuery({
     queryKey: expenseQueryKey,
@@ -239,7 +241,7 @@ export default function Expenses() {
                   Receipt
                 </button>
               )}
-              {canCreateExpenses && expense.status === 'DRAFT' && (
+              {canSubmitExpenses && expense.status === 'DRAFT' && (
                 <button
                   className="link"
                   type="button"
