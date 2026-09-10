@@ -11,6 +11,7 @@ import {
   CreateExpenseDto,
   ListExpensesQuery,
   PrepareReceiptUploadDto,
+  SubmitExpenseDto,
 } from './dto';
 import { ExpensesService } from './expenses.service';
 
@@ -68,7 +69,11 @@ export class ExpensesController {
   @Post(':id/submit')
   @Roles(Role.EMPLOYEE)
   @Idempotent()
-  submit(@CurrentUser() user: AuthUser, @Param('id') id: string) {
-    return this.expenses.submit(user, id);
+  submit(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: SubmitExpenseDto,
+  ) {
+    return this.expenses.submit(user, id, dto);
   }
 }
