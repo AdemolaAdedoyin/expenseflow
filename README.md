@@ -1,6 +1,6 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It focuses on the parts of business software that are more interesting than basic CRUD: authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, and background email delivery.
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. The project goes beyond basic CRUD and focuses on authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, reporting, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, and background email delivery.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ NestJS API
 - Short-lived JWT access tokens
 - Rotating refresh tokens backed by revocable sessions
 - HttpOnly refresh-token cookies
-- RBAC: Admin, Finance, Manager, Employee
+- Capability-based authorization for Admin, Finance, Manager, and Employee roles
 - Expense drafts and submission workflow
 - Private S3 receipt storage with pre-signed upload and download access
 - Configurable policy engine
@@ -89,7 +89,7 @@ $175 Meals expense
 
 ## Quick start
 
-Prerequisites: Node.js 22+, Docker.
+Prerequisites: Node.js 22+ and Docker.
 
 ```bash
 cp .env.example .env
@@ -127,11 +127,11 @@ npm run test:e2e          # full NestJS HTTP workflow tests
 
 The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. This protects a normal development database from the cleanup operations used by the suites.
 
-The end-to-end suite boots the real NestJS module and reuses the same global prefix and validation setup as the running API. It covers authentication, role enforcement, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis. GitHub Actions runs all three test layers before the build step.
+The end-to-end suite boots the real NestJS module and reuses the same global prefix and validation setup as the running API. It covers authentication, authorization, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis. GitHub Actions runs all three test layers before the build step.
 
 ## Receipt storage
 
-Receipt uploads are optional. The rest of the application runs without AWS credentials, but uploading or opening a receipt requires these values:
+Receipt uploads are optional. The rest of the application runs without AWS credentials, but uploading or opening a receipt requires:
 
 ```text
 AWS_REGION
@@ -142,9 +142,9 @@ S3_RECEIPTS_BUCKET
 
 `AWS_SESSION_TOKEN` is also supported when I use temporary AWS credentials.
 
-I keep the S3 bucket private. The browser never receives AWS credentials. The API creates a five-minute pre-signed POST policy for JPEG, PNG, and PDF receipts up to 10 MB, and it generates a separate five-minute pre-signed GET URL when an authorized user opens a receipt. Object keys are scoped by organization and expense.
+I keep the S3 bucket private. The browser never receives AWS credentials. The API creates a five-minute pre-signed POST policy for JPEG, PNG, and PDF receipts up to 10 MB and generates a separate five-minute pre-signed GET URL when an authorized user opens a receipt. Object keys are scoped by organization and expense.
 
-For browser uploads, the S3 bucket needs CORS that permits the web application's origin to send `POST` requests. For local development, an example is:
+For local browser uploads, the S3 bucket needs CORS that permits the web application's origin to send `POST` requests:
 
 ```json
 [
@@ -157,7 +157,7 @@ For browser uploads, the S3 bucket needs CORS that permits the web application's
 ]
 ```
 
-The AWS principal used by the API should be limited to the receipt bucket and only the object operations the application needs rather than broad S3 access.
+The AWS principal used by the API should be limited to the receipt bucket and only the object operations the application needs.
 
 ## Email delivery
 
@@ -179,9 +179,9 @@ AWS_SECRET_ACCESS_KEY
 SES_FROM_EMAIL
 ```
 
-`AWS_SESSION_TOKEN` is supported for temporary credentials. The configured SES sender must be verified, and accounts that are still in the SES sandbox can only send to verified recipients. The AWS principal should have permission to send email through SES without broader account access.
+`AWS_SESSION_TOKEN` is supported for temporary credentials. The configured SES sender must be verified, and accounts still in the SES sandbox can only send to verified recipients.
 
-I keep provider-specific logic behind the notification worker so the expense and approval domain services only enqueue notification jobs. BullMQ handles retries and exponential backoff if the provider call fails.
+I keep provider-specific logic behind the notification worker so the expense and approval domain services only enqueue notification jobs. BullMQ remains responsible for retry and exponential backoff when the provider fails.
 
 ## Demo users
 
@@ -237,11 +237,17 @@ I carry the authenticated user's `organizationId` in the JWT and scope business 
 
 ### Authentication and sessions
 
-I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. I store only a SHA-256 hash of each refresh token in PostgreSQL. Each successful refresh revokes the old session token and creates a replacement, so a refresh token cannot be reused indefinitely. Signing out revokes the current session, and the API also supports revoking every active session for a user.
+I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. I store only a SHA-256 hash of each refresh token in PostgreSQL. Each successful refresh revokes the old session token and creates a replacement. Signing out revokes the current session, and the API also supports revoking every active session for a user.
+
+### Authorization
+
+I authorize endpoints by named business capabilities such as `expense:create`, `expense:submit`, `approval:review`, and `policy:manage` rather than scattering concrete role checks across controllers. A central role-to-permission map currently supplies those capabilities. This keeps endpoint rules stable if a role changes and gives the architecture a clean path to per-user or organization-specific grants later.
+
+I mirror the same capability checks in the React app to control navigation and actions, but the NestJS permission guard remains the source of truth. Hiding a button in the frontend is never treated as authorization.
 
 ### Receipt storage
 
-I upload receipts directly from the browser to a private S3 bucket instead of proxying file bytes through the API. The API creates a short-lived signed POST policy after checking the expense owner, draft state, content type, and declared file size. After S3 accepts the upload, the client completes the attachment with the API, which validates that the object key belongs to that organization and expense before storing its S3 URI. Authorized receipt reads use short-lived signed GET URLs.
+I upload receipts directly from the browser to a private S3 bucket instead of proxying file bytes through the API. The API creates a short-lived signed POST policy after checking the expense owner, draft state, content type, and declared file size. After S3 accepts the upload, the client completes the attachment with the API, which validates that the object key belongs to that organization and expense before storing its S3 URI.
 
 ### Approval state machine
 
@@ -257,11 +263,13 @@ I use Prisma transactions when a submission or approval decision needs multiple 
 
 ### Idempotency
 
-I require idempotency keys on important state-changing endpoints such as expense creation/submission, receipt attachment, approval decisions, and policy mutations. I reserve each key before executing the mutation, scope it to the tenant and authenticated actor, hash the method/path/body, and persist the completed response for 24 hours. Replaying the same request returns the original response, while reusing the same key for different request data is rejected. If the original request fails, I release the reservation so a legitimate retry can run again.
+I require idempotency keys on important state-changing endpoints such as expense creation/submission, receipt attachment, approval decisions, and policy mutations. I reserve each key before executing the mutation, scope it to the tenant and authenticated actor, hash the method/path/body, and persist the completed response for 24 hours. Replaying the same request returns the original response, while reusing the same key for different request data is rejected.
 
 ### Optimistic concurrency control
 
-I version expenses and approvals that participate in workflow transitions. The client sends the version it last read, and the API updates rows only when that version and the expected workflow state still match. Successful mutations increment the version. If two different requests try to submit or decide the same workflow item concurrently, only the first matching update succeeds; the stale request receives HTTP 409 and is prompted to refresh rather than silently overwriting a newer decision. I use this alongside idempotency because they solve different problems: idempotency makes retries safe, while optimistic locking protects against competing requests with different idempotency keys.
+I version expenses and approvals that participate in workflow transitions. The client sends the version it last read, and the API updates rows only when that version and the expected workflow state still match. Successful mutations increment the version. A stale request receives HTTP 409 rather than silently overwriting a newer decision.
+
+I use this alongside idempotency because they solve different problems: idempotency makes retries safe, while optimistic locking protects against competing requests with different idempotency keys.
 
 ### Async jobs and email
 
@@ -271,10 +279,6 @@ I enqueue notifications through BullMQ instead of performing provider calls in t
 
 I record important domain actions with the actor, entity, action, and structured metadata so workflow changes can be traced without relying on application logs alone.
 
-### Authorization
-
-I enforce role restrictions at the API layer and mirror those permissions in the frontend so users only see actions that are available to them. The backend remains the source of truth for authorization.
-
 ### Test strategy
 
 I keep fast unit tests for isolated behavior, PostgreSQL integration tests for persistence-sensitive logic, and end-to-end tests for HTTP contracts and complete approval workflows. The database suites run serially and clean their own test data so race conditions in the test runner do not hide application-level concurrency problems.
@@ -282,7 +286,6 @@ I keep fast unit tests for isolated behavior, PostgreSQL integration tests for p
 ## Planned improvements
 
 - SSO/SAML/OIDC
-- Fine-grained permissions rather than role-only RBAC
 - PostgreSQL row-level security as an additional tenant boundary
 - Distributed tracing and structured logging
 - Metrics and queue dashboards
