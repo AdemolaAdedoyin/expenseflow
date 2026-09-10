@@ -12,35 +12,61 @@ export type PolicyEvaluation = {
 
 @Injectable()
 export class PoliciesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   list(organizationId: string) {
-    return this.prisma.policy.findMany({ where: { organizationId }, orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }] });
+    return this.prisma.withTenant(organizationId, (transaction) =>
+      transaction.policy.findMany({
+        where: { organizationId },
+        orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }],
+      }),
+    );
   }
 
   create(organizationId: string, dto: CreatePolicyDto) {
-    return this.prisma.policy.create({ data: { organizationId, ...dto } });
+    return this.prisma.withTenant(organizationId, (transaction) =>
+      transaction.policy.create({ data: { organizationId, ...dto } }),
+    );
   }
 
-  async remove(organizationId: string, id: string) {
-    const policy = await this.prisma.policy.findFirstOrThrow({ where: { id, organizationId } });
-    return this.prisma.policy.delete({ where: { id: policy.id } });
+  remove(organizationId: string, id: string) {
+    return this.prisma.withTenant(organizationId, async (transaction) => {
+      const policy = await transaction.policy.findFirstOrThrow({
+        where: { id, organizationId },
+      });
+      return transaction.policy.delete({ where: { id: policy.id } });
+    });
   }
 
-  async evaluate(organizationId: string, amountCents: number, category: string): Promise<PolicyEvaluation> {
-    const policies = await this.prisma.policy.findMany({ where: { organizationId, active: true }, orderBy: { priority: 'asc' } });
-    const matched = policies.filter((p) => {
-      const categoryMatch = !p.category || p.category.toLowerCase() === category.toLowerCase();
-      const minMatch = p.minAmountCents == null || amountCents >= p.minAmountCents;
-      const maxMatch = p.maxAmountCents == null || amountCents <= p.maxAmountCents;
+  async evaluate(
+    organizationId: string,
+    amountCents: number,
+    category: string,
+  ): Promise<PolicyEvaluation> {
+    const policies = await this.prisma.withTenant(organizationId, (transaction) =>
+      transaction.policy.findMany({
+        where: { organizationId, active: true },
+        orderBy: { priority: 'asc' },
+      }),
+    );
+
+    const matched = policies.filter((policy) => {
+      const categoryMatch =
+        !policy.category || policy.category.toLowerCase() === category.toLowerCase();
+      const minMatch = policy.minAmountCents == null || amountCents >= policy.minAmountCents;
+      const maxMatch = policy.maxAmountCents == null || amountCents <= policy.maxAmountCents;
       return categoryMatch && minMatch && maxMatch;
     });
 
     return {
-      autoReject: matched.some((p) => p.action === PolicyAction.AUTO_REJECT),
-      requireManager: matched.some((p) => p.action === PolicyAction.REQUIRE_MANAGER),
-      requireFinance: matched.some((p) => p.action === PolicyAction.REQUIRE_FINANCE),
-      matchedPolicyIds: matched.map((p) => p.id),
+      autoReject: matched.some((policy) => policy.action === PolicyAction.AUTO_REJECT),
+      requireManager: matched.some(
+        (policy) => policy.action === PolicyAction.REQUIRE_MANAGER,
+      ),
+      requireFinance: matched.some(
+        (policy) => policy.action === PolicyAction.REQUIRE_FINANCE,
+      ),
+      matchedPolicyIds: matched.map((policy) => policy.id),
     };
   }
 }
