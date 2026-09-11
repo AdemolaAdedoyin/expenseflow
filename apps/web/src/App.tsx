@@ -9,6 +9,7 @@ import Expenses from './pages/Expenses';
 import Login from './pages/Login';
 import Operations from './pages/Operations';
 import Policies from './pages/Policies';
+import SsoCallback from './pages/SsoCallback';
 
 function LoginRoute() {
   const { accessToken } = useAuth();
@@ -35,6 +36,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
+      <Route path="/sso/callback" element={<SsoCallback />} />
 
       <Route element={<RequireAuth />}>
         <Route element={<AppShell />}>

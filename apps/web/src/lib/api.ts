@@ -34,6 +34,10 @@ export function clearAccessToken() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
 }
 
+export function ssoStartUrl() {
+  return `${BASE_URL}/auth/sso/start`;
+}
+
 function getErrorMessage(body: ApiErrorBody, fallback: string) {
   if (Array.isArray(body.message)) {
     return body.message.join(', ');
