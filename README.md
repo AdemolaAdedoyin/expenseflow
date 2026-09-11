@@ -206,9 +206,13 @@ npm run test:e2e
 npm run test:regression
 ```
 
-`npm run test:regression` is the final one-command regression pass: unit tests, PostgreSQL integration tests, end-to-end workflow tests, and production builds for both applications.
+`npm run test:regression` is the final one-command regression pass. For local development it automatically starts the Docker Compose PostgreSQL/Redis services, creates an isolated `expenseflow_test` database when needed, applies migrations, and then runs unit tests, PostgreSQL integration tests, end-to-end workflow tests, and production builds for both applications.
 
-The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. The end-to-end suite boots the real NestJS module and covers authentication, RBAC/capability enforcement, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis.
+The normal development database is never used by this command. Database-backed suites still refuse to run unless the active database name contains `test`, so cleanup logic cannot accidentally target `expenseflow`.
+
+For CI or another pre-provisioned environment, set `TEST_DATABASE_URL` to an isolated test database and the runner will use it instead of creating the local Compose database. `TEST_REDIS_URL` can similarly override Redis for the regression run.
+
+The end-to-end suite boots the real NestJS module and covers authentication, RBAC/capability enforcement, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis.
 
 The integration suite also creates a temporary low-privilege PostgreSQL role to prove that row-level security hides rows from other organizations. The assertion intentionally does not use the migration/superuser connection because PostgreSQL superusers bypass RLS.
 
@@ -358,6 +362,8 @@ expenseflow/
 │       └── src/
 ├── docs/
 │   └── screenshots/
+├── scripts/
+│   └── run-regression.mjs
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 └── README.md

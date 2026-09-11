@@ -12,7 +12,7 @@
     "test": "npm run test -w @expenseflow/api",
     "test:integration": "npm run test:integration -w @expenseflow/api",
     "test:e2e": "npm run test:e2e -w @expenseflow/api",
-    "test:regression": "npm test && npm run test:integration && npm run test:e2e && npm run build",
+    "test:regression": "node scripts/run-regression.mjs",
     "lint": "npm run lint -w @expenseflow/api && npm run lint -w @expenseflow/web",
     "format": "npx --yes prettier@3.6.2 --write .",
     "format:check": "npx --yes prettier@3.6.2 --check .",
