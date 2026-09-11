@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">ExpenseFlow operations dashboard</title>
+  <desc id="desc">Static preview based on the local ExpenseFlow operations dashboard used during final regression testing.</desc>
+  <rect width="1200" height="650" fill="#f5f7fb"/>
+  <rect width="250" height="650" fill="#111c2d"/>
+  <text x="28" y="58" font-family="Arial,sans-serif" font-size="30" font-weight="700" fill="#ffffff">Expense<tspan fill="#67c9f4">Flow</tspan></text>
+  <text x="28" y="88" font-family="Arial,sans-serif" font-size="16" fill="#9aa6b8">Acme Labs</text>
+  <g font-family="Arial,sans-serif" font-size="17" fill="#d4d9e2"><text x="55" y="160">Overview</text><text x="55" y="215">Expenses</text><text x="55" y="270">Approvals</text><text x="55" y="325">Policies</text><text x="55" y="380">Operations</text></g>
+  <rect x="18" y="345" width="214" height="54" rx="12" fill="#263348"/>
+  <text x="55" y="379" font-family="Arial,sans-serif" font-size="17" fill="#ffffff">Operations</text>
+  <rect x="250" width="950" height="86" fill="#ffffff"/>
+  <text x="1120" y="38" text-anchor="end" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#182234">Finley Reed</text>
+  <text x="1120" y="62" text-anchor="end" font-family="Arial,sans-serif" font-size="13" fill="#7a8599">FINANCE</text>
+  <text x="300" y="145" font-family="Arial,sans-serif" font-size="36" font-weight="700" fill="#121b2e">Operations</text>
+  <text x="300" y="178" font-family="Arial,sans-serif" font-size="16" fill="#737f94">Runtime health for API traffic and background notification work.</text>
+  <g font-family="Arial,sans-serif">
+    <g fill="#ffffff" stroke="#dfe4ec"><rect x="300" y="215" width="200" height="110" rx="13"/><rect x="520" y="215" width="200" height="110" rx="13"/><rect x="740" y="215" width="200" height="110" rx="13"/><rect x="960" y="215" width="200" height="110" rx="13"/></g>
+    <g font-size="13" fill="#7d8798"><text x="322" y="245">HTTP requests</text><text x="542" y="245">Server errors</text><text x="762" y="245">Average latency</text><text x="982" y="245">Queue backlog</text></g>
+    <g font-size="28" font-weight="700" fill="#152035"><text x="322" y="288">48</text><text x="542" y="288">0.0%</text><text x="762" y="288">16.98 ms</text><text x="982" y="288">0</text></g>
+  </g>
+  <rect x="300" y="355" width="410" height="190" rx="14" fill="#ffffff" stroke="#dfe4ec"/>
+  <text x="325" y="392" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#172034">Notification queue</text>
+  <g font-family="Arial,sans-serif" font-size="14" fill="#5c687b"><text x="325" y="430">Waiting</text><text x="325" y="463">Active</text><text x="325" y="496">Completed</text><text x="325" y="529">Failed</text></g>
+  <g font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#202b3e"><text x="665" y="430" text-anchor="end">0</text><text x="665" y="463" text-anchor="end">0</text><text x="665" y="496" text-anchor="end">37</text><text x="665" y="529" text-anchor="end">0</text></g>
+  <rect x="735" y="355" width="425" height="190" rx="14" fill="#ffffff" stroke="#dfe4ec"/>
+  <text x="760" y="392" font-family="Arial,sans-serif" font-size="20" font-weight="700" fill="#172034">HTTP status codes</text>
+  <g font-family="Arial,sans-serif" font-size="14" fill="#5c687b"><text x="760" y="430">HTTP 200</text><text x="760" y="463">HTTP 201</text><text x="760" y="496">HTTP 204</text><text x="760" y="529">HTTP 304</text></g>
+  <g font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#202b3e"><text x="1110" y="430" text-anchor="end">17</text><text x="1110" y="463" text-anchor="end">6</text><text x="1110" y="496" text-anchor="end">3</text><text x="1110" y="529" text-anchor="end">22</text></g>
+  <text x="300" y="585" font-family="Arial,sans-serif" font-size="14" fill="#68758a">Auto-refreshes every 10 seconds · API + BullMQ operational visibility</text>
+</svg>
