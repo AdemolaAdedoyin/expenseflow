@@ -41,16 +41,22 @@ enum PolicyAction {
   AUTO_REJECT
 }
 
+enum IdempotencyStatus {
+  PENDING
+  COMPLETED
+}
+
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  users     User[]
-  expenses  Expense[]
-  policies  Policy[]
-  audits    AuditLog[]
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  users              User[]
+  expenses           Expense[]
+  policies           Policy[]
+  audits             AuditLog[]
+  idempotencyRecords IdempotencyRecord[]
 }
 
 model User {
@@ -90,6 +96,27 @@ model Session {
   @@index([expiresAt])
 }
 
+model IdempotencyRecord {
+  id             String            @id @default(cuid())
+  organizationId String
+  actorId        String
+  key            String
+  method         String
+  path           String
+  requestHash    String
+  status         IdempotencyStatus @default(PENDING)
+  responseStatus Int?
+  responseBody   String?
+  expiresAt      DateTime
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, actorId, key])
+  @@index([expiresAt])
+  @@index([organizationId, actorId, createdAt])
+}
+
 model Expense {
   id              String        @id @default(cuid())
   organizationId  String
@@ -105,6 +132,7 @@ model Expense {
   rejectionReason String?
   submittedAt     DateTime?
   decidedAt       DateTime?
+  version         Int           @default(0)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -123,6 +151,7 @@ model Approval {
   status     ApprovalStatus @default(PENDING)
   comment    String?
   decidedAt  DateTime?
+  version    Int            @default(0)
   createdAt  DateTime       @default(now())
   expense    Expense        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   approver   User           @relation("Approver", fields: [approverId], references: [id], onDelete: Cascade)

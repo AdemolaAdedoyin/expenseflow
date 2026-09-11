@@ -1,17 +1,18 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { Idempotent } from '../common/idempotency/idempotent.decorator';
+import { RequirePermissions } from '../common/permissions/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions/permissions.guard';
+import { Permission } from '../common/permissions/permissions';
 import { ApprovalsService } from './approvals.service';
 import { DecideApprovalDto } from './dto';
 
 @ApiTags('approvals')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.MANAGER, Role.FINANCE, Role.ADMIN)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions(Permission.APPROVAL_REVIEW)
 @Controller('approvals')
 export class ApprovalsController {
   constructor(private readonly approvals: ApprovalsService) {}
@@ -22,6 +23,7 @@ export class ApprovalsController {
   }
 
   @Post(':id/decision')
+  @Idempotent()
   decide(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,

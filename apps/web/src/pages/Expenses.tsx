@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hasPermission } from '../auth/permissions';
 import { useCurrentUser } from '../auth/useCurrentUser';
 import { api, money } from '../lib/api';
 import {
@@ -20,12 +21,18 @@ type CreateExpenseRequest = {
   receipt?: File;
 };
 
+type SubmitExpenseRequest = {
+  id: string;
+  expectedVersion: number;
+};
+
 export default function Expenses() {
   const queryClient = useQueryClient();
   const { data: user } = useCurrentUser();
   const [showForm, setShowForm] = useState(false);
 
-  const canCreateExpenses = user?.role === 'EMPLOYEE';
+  const canCreateExpenses = user ? hasPermission(user.role, 'expense:create') : false;
+  const canSubmitExpenses = user ? hasPermission(user.role, 'expense:submit') : false;
 
   const { data, isLoading, error } = useQuery({
     queryKey: expenseQueryKey,
@@ -67,7 +74,10 @@ export default function Expenses() {
 
       return api<Expense>(`/expenses/${expense.id}/receipt-upload/complete`, {
         method: 'POST',
-        body: JSON.stringify({ objectKey: target.objectKey }),
+        body: JSON.stringify({
+          objectKey: target.objectKey,
+          expectedVersion: expense.version,
+        }),
       });
     },
     onSuccess: async () => {
@@ -80,9 +90,10 @@ export default function Expenses() {
   });
 
   const submitExpense = useMutation({
-    mutationFn: (id: string) =>
+    mutationFn: ({ id, expectedVersion }: SubmitExpenseRequest) =>
       api<Expense>(`/expenses/${id}/submit`, {
         method: 'POST',
+        body: JSON.stringify({ expectedVersion }),
       }),
     onSuccess: async () => {
       await Promise.all([
@@ -90,6 +101,9 @@ export default function Expenses() {
         queryClient.invalidateQueries({ queryKey: dashboardQueryKey }),
         queryClient.invalidateQueries({ queryKey: ['approvals'] }),
       ]);
+    },
+    onError: async () => {
+      await queryClient.invalidateQueries({ queryKey: expenseQueryKey });
     },
   });
 
@@ -171,7 +185,9 @@ export default function Expenses() {
           />
           <input className="wide" name="description" placeholder="Description" />
           <label className="wide receipt-field">
-            <span>Receipt <small>optional · JPEG, PNG, or PDF · max 10 MB</small></span>
+            <span>
+              Receipt <small>optional · JPEG, PNG, or PDF · max 10 MB</small>
+            </span>
             <input name="receipt" type="file" accept="image/jpeg,image/png,application/pdf" />
           </label>
           <button className="primary" type="submit" disabled={createExpense.isPending}>
@@ -225,12 +241,17 @@ export default function Expenses() {
                   Receipt
                 </button>
               )}
-              {canCreateExpenses && expense.status === 'DRAFT' && (
+              {canSubmitExpenses && expense.status === 'DRAFT' && (
                 <button
                   className="link"
                   type="button"
                   disabled={submitExpense.isPending}
-                  onClick={() => submitExpense.mutate(expense.id)}
+                  onClick={() =>
+                    submitExpense.mutate({
+                      id: expense.id,
+                      expectedVersion: expense.version,
+                    })
+                  }
                 >
                   Submit
                 </button>

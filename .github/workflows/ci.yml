@@ -35,6 +35,7 @@ jobs:
       JWT_SECRET: ci-secret-ci-secret-ci-secret
       JWT_EXPIRES_IN: 8h
       WEB_ORIGIN: http://localhost:5173
+      EMAIL_PROVIDER: console
 
     steps:
       - uses: actions/checkout@v4
@@ -47,4 +48,6 @@ jobs:
       - run: npm run db:generate
       - run: npm run db:deploy
       - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:e2e
       - run: npm run build

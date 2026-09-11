@@ -1,5 +1,6 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
 const ACCESS_TOKEN_KEY = 'token';
+const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 type ApiErrorBody = {
   message?: string | string[];
@@ -31,6 +32,10 @@ export function setAccessToken(token: string) {
 
 export function clearAccessToken() {
   localStorage.removeItem(ACCESS_TOKEN_KEY);
+}
+
+export function ssoStartUrl() {
+  return `${BASE_URL}/auth/sso/start`;
 }
 
 function getErrorMessage(body: ApiErrorBody, fallback: string) {
@@ -90,6 +95,25 @@ export async function endSession() {
   }
 }
 
+function withIdempotencyKey(options: RequestInit): RequestInit {
+  const method = (options.method ?? 'GET').toUpperCase();
+
+  if (!MUTATION_METHODS.has(method)) {
+    return options;
+  }
+
+  const headers = new Headers(options.headers);
+
+  if (!headers.has('Idempotency-Key')) {
+    headers.set('Idempotency-Key', crypto.randomUUID());
+  }
+
+  return {
+    ...options,
+    headers,
+  };
+}
+
 async function request<T>(
   path: string,
   options: RequestInit,
@@ -136,7 +160,7 @@ async function request<T>(
 }
 
 export function api<T>(path: string, options: RequestInit = {}) {
-  return request<T>(path, options, true);
+  return request<T>(path, withIdempotencyKey(options), true);
 }
 
 export function money(cents: number, currency = 'USD') {

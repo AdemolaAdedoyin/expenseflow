@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -21,6 +22,7 @@ import {
   CreateExpenseDto,
   ListExpensesQuery,
   PrepareReceiptUploadDto,
+  SubmitExpenseDto,
 } from './dto';
 import { ReceiptStorageService } from './receipt-storage.service';
 
@@ -35,15 +37,17 @@ export class ExpensesService {
   ) {}
 
   async create(user: AuthUser, dto: CreateExpenseDto) {
-    const expense = await this.prisma.expense.create({
-      data: {
-        organizationId: user.organizationId,
-        userId: user.sub,
-        ...dto,
-        incurredAt: new Date(dto.incurredAt),
-        currency: dto.currency ?? 'USD',
-      },
-    });
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.create({
+        data: {
+          organizationId: user.organizationId,
+          userId: user.sub,
+          ...dto,
+          incurredAt: new Date(dto.incurredAt),
+          currency: dto.currency ?? 'USD',
+        },
+      }),
+    );
 
     await this.audit.write({
       organizationId: user.organizationId,
@@ -78,25 +82,29 @@ export class ExpensesService {
       };
     }
 
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.expense.findMany({
-        where,
-        include: {
-          user: {
-            select: {
-              firstName: true,
-              lastName: true,
-              email: true,
+    const [items, total] = await this.prisma.withTenant(
+      user.organizationId,
+      async (transaction) =>
+        Promise.all([
+          transaction.expense.findMany({
+            where,
+            include: {
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+              approvals: true,
             },
-          },
-          approvals: true,
-        },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      this.prisma.expense.count({ where }),
-    ]);
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+          transaction.expense.count({ where }),
+        ]),
+    );
 
     return {
       items,
@@ -108,35 +116,37 @@ export class ExpensesService {
   }
 
   async get(user: AuthUser, id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            department: true,
-          },
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
         },
-        approvals: {
-          include: {
-            approver: {
-              select: {
-                firstName: true,
-                lastName: true,
-                email: true,
-              },
+        include: {
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+              department: true,
             },
           },
-          orderBy: { createdAt: 'asc' },
+          approvals: {
+            include: {
+              approver: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
         },
-      },
-    });
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
@@ -160,18 +170,38 @@ export class ExpensesService {
   }
 
   async completeReceiptUpload(user: AuthUser, id: string, dto: CompleteReceiptUploadDto) {
-    await this.getOwnedDraftExpense(user, id);
+    const current = await this.getOwnedDraftExpense(user, id);
+
+    if (current.version !== dto.expectedVersion) {
+      throw this.staleExpenseConflict();
+    }
+
     this.receiptStorage.assertObjectBelongsToExpense(
       user.organizationId,
       id,
       dto.objectKey,
     );
 
-    const expense = await this.prisma.expense.update({
-      where: { id },
-      data: {
-        receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
-      },
+    const expense = await this.prisma.withTenant(user.organizationId, async (transaction) => {
+      const updated = await transaction.expense.updateMany({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+          status: ExpenseStatus.DRAFT,
+          version: dto.expectedVersion,
+        },
+        data: {
+          receiptUrl: this.receiptStorage.toStorageUri(dto.objectKey),
+          version: { increment: 1 },
+        },
+      });
+
+      if (updated.count !== 1) {
+        throw this.staleExpenseConflict();
+      }
+
+      return transaction.expense.findUniqueOrThrow({ where: { id } });
     });
 
     await this.audit.write({
@@ -180,7 +210,7 @@ export class ExpensesService {
       entityType: 'Expense',
       entityId: id,
       action: 'expense.receipt_attached',
-      metadata: { objectKey: dto.objectKey },
+      metadata: { objectKey: dto.objectKey, version: expense.version },
     });
 
     return expense;
@@ -197,15 +227,17 @@ export class ExpensesService {
     return this.receiptStorage.createDownloadUrl(objectKey);
   }
 
-  async submit(user: AuthUser, id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-        userId: user.sub,
-      },
-      include: { user: true },
-    });
+  async submit(user: AuthUser, id: string, dto: SubmitExpenseDto) {
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+        },
+        include: { user: true },
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
@@ -213,6 +245,10 @@ export class ExpensesService {
 
     if (expense.status !== ExpenseStatus.DRAFT) {
       throw new BadRequestException('Only draft expenses can be submitted');
+    }
+
+    if (expense.version !== dto.expectedVersion) {
+      throw this.staleExpenseConflict();
     }
 
     const evaluation = await this.policies.evaluate(
@@ -238,12 +274,21 @@ export class ExpensesService {
 
     const status = this.resolveSubmissionStatus(evaluation);
 
-    const updated = await this.prisma.$transaction(async (transaction) => {
-      const result = await transaction.expense.update({
-        where: { id },
+    // The tenant setting and the workflow writes share one connection. That matters for
+    // PostgreSQL RLS because transaction-local settings must not leak through the pool.
+    const updated = await this.prisma.withTenant(user.organizationId, async (transaction) => {
+      const changed = await transaction.expense.updateMany({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+          status: ExpenseStatus.DRAFT,
+          version: dto.expectedVersion,
+        },
         data: {
           status,
           submittedAt: new Date(),
+          version: { increment: 1 },
           ...(status === ExpenseStatus.APPROVED || status === ExpenseStatus.REJECTED
             ? { decidedAt: new Date() }
             : {}),
@@ -252,6 +297,10 @@ export class ExpensesService {
             : {}),
         },
       });
+
+      if (changed.count !== 1) {
+        throw this.staleExpenseConflict();
+      }
 
       if (!evaluation.autoReject && evaluation.requireManager && manager) {
         await transaction.approval.create({
@@ -277,7 +326,7 @@ export class ExpensesService {
         });
       }
 
-      return result;
+      return transaction.expense.findUniqueOrThrow({ where: { id } });
     });
 
     await this.audit.write({
@@ -288,6 +337,7 @@ export class ExpensesService {
       action: 'expense.submitted',
       metadata: {
         status,
+        version: updated.version,
         matchedPolicyIds: evaluation.matchedPolicyIds,
       },
     });
@@ -316,13 +366,15 @@ export class ExpensesService {
   }
 
   private async getOwnedDraftExpense(user: AuthUser, id: string) {
-    const expense = await this.prisma.expense.findFirst({
-      where: {
-        id,
-        organizationId: user.organizationId,
-        userId: user.sub,
-      },
-    });
+    const expense = await this.prisma.withTenant(user.organizationId, (transaction) =>
+      transaction.expense.findFirst({
+        where: {
+          id,
+          organizationId: user.organizationId,
+          userId: user.sub,
+        },
+      }),
+    );
 
     if (!expense) {
       throw new NotFoundException('Expense not found');
@@ -333,6 +385,12 @@ export class ExpensesService {
     }
 
     return expense;
+  }
+
+  private staleExpenseConflict() {
+    return new ConflictException(
+      'This expense changed after you loaded it. Refresh the page and try again.',
+    );
   }
 
   private async findManagerApprover(organizationId: string, managerId: string | null) {

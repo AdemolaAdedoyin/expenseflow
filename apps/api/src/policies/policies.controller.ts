@@ -1,17 +1,38 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { Role } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
-import { Roles } from '../common/decorators/roles.decorator';
-import { RolesGuard } from '../common/guards/roles.guard';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { Idempotent } from '../common/idempotency/idempotent.decorator';
+import { RequirePermissions } from '../common/permissions/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions/permissions.guard';
+import { Permission } from '../common/permissions/permissions';
 import { CreatePolicyDto } from './dto';
 import { PoliciesService } from './policies.service';
 
-@ApiTags('policies') @ApiBearerAuth() @UseGuards(JwtAuthGuard, RolesGuard) @Controller('policies')
+@ApiTags('policies')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Controller('policies')
 export class PoliciesController {
-  constructor(private policies: PoliciesService) {}
-  @Get() list(@CurrentUser() u: AuthUser) { return this.policies.list(u.organizationId); }
-  @Post() @Roles(Role.ADMIN, Role.FINANCE) create(@CurrentUser() u: AuthUser, @Body() dto: CreatePolicyDto) { return this.policies.create(u.organizationId, dto); }
-  @Delete(':id') @Roles(Role.ADMIN, Role.FINANCE) remove(@CurrentUser() u: AuthUser, @Param('id') id: string) { return this.policies.remove(u.organizationId, id); }
+  constructor(private readonly policies: PoliciesService) {}
+
+  @Get()
+  @RequirePermissions(Permission.POLICY_READ)
+  list(@CurrentUser() user: AuthUser) {
+    return this.policies.list(user.organizationId);
+  }
+
+  @Post()
+  @RequirePermissions(Permission.POLICY_MANAGE)
+  @Idempotent()
+  create(@CurrentUser() user: AuthUser, @Body() dto: CreatePolicyDto) {
+    return this.policies.create(user.organizationId, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(Permission.POLICY_MANAGE)
+  @Idempotent()
+  remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.policies.remove(user.organizationId, id);
+  }
 }

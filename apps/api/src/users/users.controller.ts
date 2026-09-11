@@ -1,10 +1,22 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { CurrentUser, AuthUser } from '../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequirePermissions } from '../common/permissions/permissions.decorator';
+import { PermissionsGuard } from '../common/permissions/permissions.guard';
+import { Permission } from '../common/permissions/permissions';
 import { UsersService } from './users.service';
-@ApiTags('users') @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Controller('users')
+
+@ApiTags('users')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions(Permission.USER_READ)
+@Controller('users')
 export class UsersController {
-  constructor(private users: UsersService) {}
-  @Get() list(@CurrentUser() u: AuthUser) { return this.users.list(u.organizationId); }
+  constructor(private readonly users: UsersService) {}
+
+  @Get()
+  list(@CurrentUser() user: AuthUser) {
+    return this.users.list(user.organizationId);
+  }
 }
