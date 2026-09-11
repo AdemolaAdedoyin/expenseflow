@@ -42,7 +42,15 @@ type IdTokenClaims = {
   email_verified?: boolean;
 };
 
-type JsonWebKeyWithKid = JsonWebKey & { kid?: string; alg?: string; use?: string };
+type JsonWebKeyWithKid = {
+  [key: string]: string | undefined;
+  kid?: string;
+  alg?: string;
+  use?: string;
+  kty?: string;
+  n?: string;
+  e?: string;
+};
 
 @Injectable()
 export class OidcService {
