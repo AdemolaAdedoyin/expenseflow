@@ -1,51 +1,135 @@
 # ExpenseFlow
 
-I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. The project goes beyond CRUD and focuses on authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, tenant isolation, secure sessions, private file handling, resilient mutations, concurrency control, background email delivery, enterprise authentication, and operational visibility.
+[![CI](https://github.com/AdemolaAdedoyin/expenseflow/actions/workflows/ci.yml/badge.svg)](https://github.com/AdemolaAdedoyin/expenseflow/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/Node.js-22%2B-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=111)
+![License](https://img.shields.io/badge/license-MIT-blue)
+
+I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It is intentionally more than CRUD: the project focuses on tenant isolation, authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, secure sessions, private file handling, resilient mutations, concurrency control, enterprise authentication, observability, and operational readiness.
+
+## Portfolio highlights
+
+- Multi-tenant NestJS API with PostgreSQL row-level security as defense in depth
+- Capability-based authorization across Admin, Finance, Manager, and Employee workflows
+- Employee -> Manager -> Finance approval state machine with policy-driven routing
+- Rotating/revocable refresh sessions plus generic OpenID Connect SSO with PKCE
+- Idempotency keys and optimistic locking for safe state-changing requests
+- Private Amazon S3 receipt uploads and Amazon SES-backed async notifications
+- BullMQ/Redis background processing with retries and trace propagation
+- Structured JSON logging, request/trace IDs, health/readiness probes, and an Operations dashboard
+- Unit, integration, and end-to-end regression coverage in GitHub Actions
+
+## Product screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/overview.svg" alt="ExpenseFlow overview dashboard" /></td>
+    <td width="50%"><img src="docs/screenshots/approvals.svg" alt="ExpenseFlow approval inbox" /></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/operations.svg" alt="ExpenseFlow operations dashboard" /></td>
+  </tr>
+</table>
+
+The screenshots above are lightweight repository previews based on the local application UI used during final regression testing.
 
 ## Architecture
 
-```text
-React / TypeScript
-      |
-      | REST + JWT / OIDC SSO
-      v
-NestJS API
-  |        |         |          |
-  |        |         |          +--> S3 private receipt storage
-  |        |         |
-  |        |         +--> BullMQ --> Redis --> Notification worker --> Console / Amazon SES
-  |        |
-  |        +--> Policy / approval state machine
-  |
-  +--> Prisma --> PostgreSQL + tenant RLS
+```mermaid
+flowchart LR
+    Browser[React + TypeScript] -->|REST / JWT| API[NestJS API]
+    Browser -->|OIDC Authorization Code + PKCE| IdP[OIDC Provider]
+    IdP -->|callback| API
+
+    API --> Auth[Auth + Capability Guards]
+    API --> Policy[Policy / Approval Engine]
+    API --> Prisma[Prisma]
+    Prisma --> PG[(PostgreSQL + RLS)]
+
+    API -->|signed upload / download| S3[(Amazon S3)]
+    API --> Queue[BullMQ]
+    Queue --> Redis[(Redis)]
+    Queue --> Worker[Notification Worker]
+    Worker --> SES[Console / Amazon SES]
+
+    API --> Obs[Structured Logs + Trace Context]
+    API --> Ops[Health / Readiness / Metrics]
 ```
 
-## Features
+### Core data model
 
-- Multi-tenant organization scoping
-- PostgreSQL row-level security on tenant-owned business records
-- Short-lived JWT access tokens with rotating, revocable refresh sessions
-- Generic OpenID Connect SSO using Authorization Code + PKCE
-- OIDC discovery, state/nonce validation, JWKS signature verification, and existing-user linking
-- HttpOnly refresh-token cookies
-- Capability-based authorization for Admin, Finance, Manager, and Employee roles
-- Global API rate limiting with stricter authentication limits
-- Expense drafts, submission, policy evaluation, and multi-stage approvals
-- Private S3 receipt storage with short-lived pre-signed access
-- Idempotency keys for important mutations
-- Optimistic locking for workflow transitions
-- Transactional state changes and audit events
-- BullMQ/Redis notification processing with retries
-- Amazon SES provider with a local console fallback
-- Structured JSON logs and W3C trace-context propagation
-- Protected Operations dashboard for API and queue metrics
-- Liveness and readiness probes for PostgreSQL/Redis-aware deployments
-- PostgreSQL + Prisma
-- Swagger/OpenAPI documentation
-- React + TypeScript dashboard
-- Unit, integration, and end-to-end API tests
-- Docker Compose and GitHub Actions CI
-- Prettier + EditorConfig formatting
+```mermaid
+erDiagram
+    Organization ||--o{ User : has
+    Organization ||--o{ Expense : owns
+    Organization ||--o{ Policy : defines
+    Organization ||--o{ AuditLog : records
+    Organization ||--o{ IdempotencyRecord : scopes
+
+    User ||--o{ Session : owns
+    User ||--o{ Expense : submits
+    User ||--o{ Approval : reviews
+    User ||--o{ AuditLog : acts_in
+
+    Expense ||--o{ Approval : requires
+
+    Organization {
+      string id PK
+      string name
+      string slug
+    }
+    User {
+      string id PK
+      string organizationId FK
+      string email
+      Role role
+      string managerId FK
+    }
+    Expense {
+      string id PK
+      string organizationId FK
+      string userId FK
+      int amountCents
+      ExpenseStatus status
+      int version
+    }
+    Approval {
+      string id PK
+      string expenseId FK
+      string approverId FK
+      ApprovalLevel level
+      ApprovalStatus status
+      int version
+    }
+    Policy {
+      string id PK
+      string organizationId FK
+      PolicyAction action
+      int priority
+    }
+    Session {
+      string id PK
+      string userId FK
+      string tokenHash
+      datetime expiresAt
+      datetime revokedAt
+    }
+    AuditLog {
+      string id PK
+      string organizationId FK
+      string actorId FK
+      string action
+    }
+    IdempotencyRecord {
+      string id PK
+      string organizationId FK
+      string actorId
+      string key
+      IdempotencyStatus status
+    }
+```
 
 ## Workflow example
 
@@ -79,11 +163,9 @@ $175 Meals expense
 
 **Frontend:** React, TypeScript, Vite, TanStack Query, React Router
 
-**Storage:** Amazon S3 with private objects and short-lived pre-signed access
+**Cloud integrations:** Amazon S3 private receipt storage, Amazon SES email delivery
 
-**Email:** Amazon SES with a local console provider fallback
-
-**Authentication:** Local credentials plus standards-based OpenID Connect SSO
+**Authentication:** Local credentials, rotating refresh sessions, generic OpenID Connect SSO
 
 **Platform:** Docker Compose, GitHub Actions
 
@@ -101,53 +183,56 @@ npm run db:seed
 npm run dev
 ```
 
-For normal local development after initial setup, I use:
+For normal local development after initial setup:
 
 ```bash
 npm run dev:local
 ```
 
-That applies pending migrations and then starts both the API and web app. `npm run dev` still regenerates Prisma Client before startup.
+That applies pending migrations and starts both the API and web app.
 
 Open:
 
-- Web app: http://localhost:5173
-- API: http://localhost:4000/api
-- Swagger: http://localhost:4000/docs
+- Web app: `http://localhost:5173`
+- API: `http://localhost:4000/api`
+- Swagger: `http://localhost:4000/docs`
 
-## Testing
+## Testing and regression
 
 ```bash
 npm test
 npm run test:integration
 npm run test:e2e
+npm run test:regression
 ```
 
-The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. The end-to-end suite boots the real NestJS module and covers authentication, authorization, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis.
+`npm run test:regression` is the final one-command regression pass: unit tests, PostgreSQL integration tests, end-to-end workflow tests, and production builds for both applications.
 
-The integration suite also creates a temporary low-privilege PostgreSQL role to prove that RLS hides rows from other organizations. I do not run that assertion through the migration/superuser connection because PostgreSQL superusers bypass row-level security.
+The database-backed suites refuse to run unless `DATABASE_URL` points to a database whose name contains `test`. The end-to-end suite boots the real NestJS module and covers authentication, RBAC/capability enforcement, idempotent mutations, and the Employee -> Manager -> Finance approval path against PostgreSQL and Redis.
+
+The integration suite also creates a temporary low-privilege PostgreSQL role to prove that row-level security hides rows from other organizations. The assertion intentionally does not use the migration/superuser connection because PostgreSQL superusers bypass RLS.
 
 ## Authentication and authorization
 
-I keep access tokens short-lived and use an opaque refresh token in an HttpOnly cookie for longer-lived browser sessions. Only a SHA-256 hash of each refresh token is stored in PostgreSQL. Refreshing rotates the session token, signing out revokes the current session, and the API can revoke all active sessions for a user.
+Access tokens are short-lived. Longer browser sessions use opaque refresh tokens stored in an HttpOnly cookie; only SHA-256 hashes are persisted in PostgreSQL. Refreshing rotates the session token, sign-out revokes the current session, and the API can revoke all active sessions for a user.
 
-I authorize endpoints using named business capabilities such as `expense:create`, `expense:submit`, `approval:review`, and `policy:manage`. I mirror those checks in React for navigation and actions, while the NestJS permission guard remains the authorization boundary.
+Endpoints use named business capabilities such as `expense:create`, `expense:submit`, `approval:review`, `policy:manage`, and `operations:read`. React mirrors those checks for navigation and actions, while the NestJS permission guard remains the server-side authorization boundary.
 
 ### OpenID Connect SSO
 
-I support standards-based OIDC SSO without coupling the application to one identity vendor. The login uses the Authorization Code flow with PKCE, a random state value, and a nonce. The API discovers provider endpoints from the issuer's `/.well-known/openid-configuration`, exchanges the code server-side, verifies the RS256 ID-token signature against the provider's JWKS, and validates issuer, audience, expiry, nonce, and verified email claims.
+ExpenseFlow supports standards-based OIDC without coupling the application to one identity vendor. The login uses Authorization Code + PKCE, random `state` and `nonce` values, OIDC discovery, server-side code exchange, JWKS signature verification, and issuer/audience/expiry/nonce/email validation.
 
-I keep the PKCE verifier and nonce in a short-lived, HMAC-protected HttpOnly cookie during the provider round trip. After a successful callback, the API creates the same revocable ExpenseFlow session used by password login and redirects to the web app without placing access or refresh tokens in the URL.
+The PKCE verifier and nonce stay in a short-lived HMAC-protected HttpOnly cookie during the provider round trip. After a successful callback, the API creates the same revocable ExpenseFlow session used by password login and redirects to the frontend without placing access or refresh tokens in the URL.
 
-SSO only links to an existing ExpenseFlow user in one explicitly configured organization. I do not auto-provision roles or tenant membership from identity-provider claims.
+SSO links only to an existing ExpenseFlow user in one explicitly configured organization. Identity-provider claims do not silently create users, tenant memberships, or privileged roles.
 
-To enable it, register this callback URL with an OIDC provider:
+To enable SSO, register:
 
 ```text
 http://localhost:4000/api/auth/sso/callback
 ```
 
-Then configure:
+and configure:
 
 ```text
 OIDC_ENABLED=true
@@ -158,61 +243,40 @@ OIDC_REDIRECT_URI=http://localhost:4000/api/auth/sso/callback
 OIDC_ORGANIZATION_SLUG=acme-labs
 ```
 
-The client secret is optional for providers that support a public PKCE client. The configured provider must issue RS256-signed ID tokens containing an email claim. When SSO is disabled, the normal demo login behaves exactly as before.
-
 ## Tenant isolation
 
-I keep explicit `organizationId` filters in application queries and add PostgreSQL row-level security underneath them for tenant-owned business data. Expense, Approval, Policy, and AuditLog rows are protected by database policies.
+Application queries retain explicit `organizationId` filters, and PostgreSQL row-level security protects tenant-owned Expense, Approval, Policy, and AuditLog records underneath those checks.
 
-The API uses a tenant-scoped Prisma transaction helper that sets `app.current_organization_id` with PostgreSQL `set_config(..., true)`. The setting is transaction-local, so it stays on the same connection as the query and is cleared automatically when the transaction ends instead of leaking through the connection pool.
+The API uses a tenant-scoped Prisma transaction helper that sets `app.current_organization_id` with transaction-local PostgreSQL configuration. Keeping the setting transaction-local ensures it remains on the same connection as the query and cannot leak through the connection pool.
 
-The RLS layer is defense in depth, not a replacement for API authorization. Production runtime connections should use a normal PostgreSQL role without `SUPERUSER` or `BYPASSRLS`; migration/administrative connections can remain privileged.
+Production runtime connections should use a normal PostgreSQL role without `SUPERUSER` or `BYPASSRLS`; migration and administrative connections can remain privileged.
 
-## Rate limiting
+## Resilient mutations and concurrency
 
-I apply a process-local fixed-window limit to API traffic and a stricter limit to login/refresh requests. Health probes are excluded so orchestrator checks are not throttled. Responses include standard rate-limit metadata and return HTTP 429 with `Retry-After` when a client exceeds the active window.
+Important state-changing endpoints require idempotency keys scoped to the authenticated actor and tenant and bound to a request fingerprint. Replaying the same request returns the original result; reusing a key for different request data is rejected.
 
-The defaults can be adjusted with:
+Expenses and approvals participating in workflow transitions also carry optimistic-lock versions. A stale competing request receives HTTP 409 instead of overwriting newer state.
 
-```text
-RATE_LIMIT_REQUESTS=300
-RATE_LIMIT_WINDOW_MS=60000
-AUTH_RATE_LIMIT_REQUESTS=10
-AUTH_RATE_LIMIT_WINDOW_MS=600000
-```
+## Receipt storage and async notifications
 
-The limiter is intentionally isolated behind a service so a shared Redis-backed implementation can replace the process-local store when the API runs across multiple replicas.
+Receipt bytes go directly from the browser to a private S3 bucket using short-lived signed uploads. The API validates expense ownership, draft state, content type, declared size, and the resulting object key before attaching the receipt.
+
+Notifications are queued through BullMQ instead of blocking the HTTP request path. Local development uses console delivery; configured environments can use Amazon SES. BullMQ provides retries and exponential backoff for transient provider failures.
 
 ## Observability and operations
 
-Every HTTP request gets a request ID and W3C trace context. Structured application logs include the active `requestId`, `traceId`, and `spanId`, and BullMQ notification jobs carry trace context into asynchronous processing.
+Every HTTP request receives a request ID and W3C trace context. Structured application logs include `requestId`, `traceId`, and `spanId`, and notification jobs propagate trace context into asynchronous processing.
 
-Finance and Admin users also have a protected Operations page showing request totals, server-error rate, average latency, status-code distribution, and BullMQ notification queue counts.
+Finance and Admin users have a protected Operations page with request totals, server-error rate, average latency, status-code distribution, and BullMQ queue counts.
 
-Deployment health endpoints are public so an orchestrator can check them without authentication:
+Public deployment probes:
 
 ```text
 GET /api/health/live
 GET /api/health/ready
 ```
 
-Liveness reports whether the API process is running. Readiness checks PostgreSQL and Redis and returns HTTP 503 when the application cannot safely receive traffic.
-
-## Receipt storage
-
-I upload receipts directly from the browser to a private S3 bucket instead of proxying file bytes through the API. The API validates expense ownership, draft state, file type, and declared size before issuing a short-lived signed upload policy. It validates the resulting object key again before attaching the receipt to the expense.
-
-Receipt upload/download requires AWS credentials and `S3_RECEIPTS_BUCKET`. JPEG, PNG, and PDF receipts are supported up to 10 MB.
-
-## Async jobs and email
-
-I enqueue notifications through BullMQ instead of making provider calls in the HTTP request path. Local development defaults to console delivery; configured environments can use Amazon SES. BullMQ owns retry and exponential backoff for transient provider failures.
-
-## Concurrency and resilient mutations
-
-I require idempotency keys on important state-changing endpoints. Each key is scoped to the authenticated actor and tenant and bound to a request fingerprint. Replaying an identical request returns the original result, while reusing the key for different request data is rejected.
-
-I also version expenses and approvals that participate in workflow transitions. The client sends the version it last read, and a stale competing request receives HTTP 409 instead of overwriting newer state.
+Readiness checks PostgreSQL and Redis and returns HTTP 503 when the application cannot safely receive traffic.
 
 ## Demo users
 
@@ -220,10 +284,10 @@ All demo users use password `Password123!`.
 
 | Role | Email |
 |---|---|
-| Employee | employee@demo.com |
-| Manager | manager@demo.com |
-| Finance | finance@demo.com |
-| Admin | admin@demo.com |
+| Employee | `employee@demo.com` |
+| Manager | `manager@demo.com` |
+| Finance | `finance@demo.com` |
+| Admin | `admin@demo.com` |
 
 ## API highlights
 
@@ -259,6 +323,28 @@ GET    /api/health/live
 GET    /api/health/ready
 ```
 
+## Deployment status
+
+The repository is currently optimized for reproducible local development and CI rather than advertising a temporary demo environment. A durable AWS deployment and public demo URL are intentionally part of Stage 3 so infrastructure can be versioned and reviewed instead of configured manually.
+
+## Stage 3 improvements
+
+Stage 2 established the production-style application and security foundations. The next iteration would focus on cloud deployment, scale, enterprise lifecycle management, and deeper product capabilities:
+
+- **AWS infrastructure as code:** deploy the API/web workloads, RDS PostgreSQL, ElastiCache Redis, S3, SES, networking, IAM, secrets, DNS, and TLS using AWS CDK or Terraform.
+- **Public demo environment:** deploy a stable portfolio environment with seeded demo users, a custom domain, HTTPS, environment-specific configuration, and an automated deployment pipeline.
+- **Shared distributed rate limiting:** replace the process-local limiter with a Redis-backed implementation suitable for multiple API replicas.
+- **Production metrics and tracing:** export OpenTelemetry traces/metrics to CloudWatch, Grafana/Prometheus, or another backend; add queue/runtime alerts and SLO-oriented dashboards.
+- **Enterprise identity lifecycle:** support per-organization OIDC configuration, optional SAML federation, domain verification, SCIM user provisioning/deprovisioning, and group-to-capability mapping.
+- **Administration console:** manage users, departments, manager relationships, roles/capabilities, policies, and organization settings through protected admin workflows.
+- **Webhooks and integrations:** signed outbound webhooks for expense/approval events plus integrations with accounting/ERP systems.
+- **Reporting and exports:** date/category/department analytics, CSV exports, scheduled reports, and richer finance dashboards.
+- **Receipt processing:** malware scanning, metadata extraction/OCR, duplicate-receipt detection, and lifecycle/retention policies.
+- **Workflow flexibility:** configurable approval chains, delegation/out-of-office handling, escalation timers, and policy versioning.
+- **Resilience at scale:** dead-letter workflows, replay tooling, Redis/PostgreSQL failover testing, load tests, and chaos/recovery exercises.
+- **Frontend quality:** accessibility audit, component-level tests, richer empty/loading/error states, and responsive visual regression coverage.
+- **Security hardening:** dependency scanning, secret scanning, SAST, CSP tuning, audit-log retention/immutability, and periodic authorization/RLS regression suites.
+
 ## Repository layout
 
 ```text
@@ -270,6 +356,8 @@ expenseflow/
 │   │   └── test/
 │   └── web/
 │       └── src/
+├── docs/
+│   └── screenshots/
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
 └── README.md

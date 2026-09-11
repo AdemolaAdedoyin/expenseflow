@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="650" viewBox="0 0 1200 650" role="img" aria-labelledby="title desc">
+  <title id="title">ExpenseFlow approval inbox</title>
+  <desc id="desc">Static preview based on the local ExpenseFlow manager approval inbox used during final regression testing.</desc>
+  <rect width="1200" height="650" fill="#f5f7fb"/>
+  <rect width="250" height="650" fill="#111c2d"/>
+  <text x="28" y="58" font-family="Arial,sans-serif" font-size="30" font-weight="700" fill="#ffffff">Expense<tspan fill="#67c9f4">Flow</tspan></text>
+  <text x="28" y="88" font-family="Arial,sans-serif" font-size="16" fill="#9aa6b8">Acme Labs</text>
+  <g font-family="Arial,sans-serif" font-size="17" fill="#d4d9e2"><text x="55" y="160">Overview</text><text x="55" y="215">Expenses</text><text x="55" y="270">Approvals</text><text x="55" y="325">Policies</text></g>
+  <rect x="18" y="235" width="214" height="54" rx="12" fill="#263348"/>
+  <text x="55" y="269" font-family="Arial,sans-serif" font-size="17" fill="#ffffff">Approvals</text>
+  <rect x="250" width="950" height="86" fill="#ffffff"/>
+  <text x="1120" y="38" text-anchor="end" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#182234">Morgan Lee</text>
+  <text x="1120" y="62" text-anchor="end" font-family="Arial,sans-serif" font-size="13" fill="#7a8599">MANAGER</text>
+  <text x="300" y="145" font-family="Arial,sans-serif" font-size="36" font-weight="700" fill="#121b2e">Approval inbox</text>
+  <text x="300" y="178" font-family="Arial,sans-serif" font-size="16" fill="#737f94">Review expenses currently waiting on you.</text>
+  <g font-family="Arial,sans-serif">
+    <rect x="300" y="220" width="395" height="250" rx="16" fill="#ffffff" stroke="#dfe4ec"/>
+    <text x="326" y="255" font-size="13" font-weight="700" fill="#8893a5">MANAGER REVIEW</text>
+    <text x="326" y="296" font-size="24" font-weight="700" fill="#172034">Pleaee</text>
+    <text x="326" y="324" font-size="15" fill="#778195">Travel · 9/10/2026</text>
+    <text x="326" y="372" font-size="34" font-weight="700" fill="#111b2d">$100.00</text>
+    <rect x="480" y="405" width="88" height="40" rx="8" fill="#fff2f2"/>
+    <text x="524" y="431" text-anchor="middle" font-size="14" font-weight="700" fill="#d44f5c">Reject</text>
+    <rect x="578" y="405" width="88" height="40" rx="8" fill="#4e7cf3"/>
+    <text x="622" y="431" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Approve</text>
+
+    <rect x="725" y="220" width="395" height="250" rx="16" fill="#ffffff" stroke="#dfe4ec"/>
+    <text x="751" y="255" font-size="13" font-weight="700" fill="#8893a5">MANAGER REVIEW</text>
+    <text x="751" y="296" font-size="24" font-weight="700" fill="#172034">Pleaee</text>
+    <text x="751" y="324" font-size="15" fill="#778195">Travel · 9/10/2026</text>
+    <text x="751" y="372" font-size="34" font-weight="700" fill="#111b2d">$2,600.00</text>
+    <rect x="905" y="405" width="88" height="40" rx="8" fill="#fff2f2"/>
+    <text x="949" y="431" text-anchor="middle" font-size="14" font-weight="700" fill="#d44f5c">Reject</text>
+    <rect x="1003" y="405" width="88" height="40" rx="8" fill="#4e7cf3"/>
+    <text x="1047" y="431" text-anchor="middle" font-size="14" font-weight="700" fill="#ffffff">Approve</text>
+  </g>
+  <rect x="300" y="505" width="820" height="78" rx="12" fill="#edf4ff"/>
+  <text x="325" y="538" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#35507a">Workflow regression</text>
+  <text x="325" y="563" font-family="Arial,sans-serif" font-size="14" fill="#52657e">Employee submission → manager decision → finance routing is covered by the API end-to-end suite.</text>
+</svg>
