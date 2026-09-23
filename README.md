@@ -9,6 +9,8 @@
 
 I built ExpenseFlow as a production-style, multi-tenant expense management and approval platform. It is intentionally more than CRUD: the project focuses on tenant isolation, authorization boundaries, policy evaluation, multi-step approvals, asynchronous work, auditability, secure sessions, private file handling, resilient mutations, concurrency control, enterprise authentication, observability, and operational readiness.
 
+> **Run locally:** The full application is runnable locally. A public full-stack demo is not yet available: only the frontend has been hosted, and the backend is not deployed. Start with the [setup guide](#quick-start) or [product screenshots](#product-screenshots).
+
 ## Portfolio highlights
 
 - Multi-tenant NestJS API with PostgreSQL row-level security as defense in depth
@@ -284,6 +286,8 @@ Readiness checks PostgreSQL and Redis and returns HTTP 503 when the application 
 
 ## Demo users
 
+These accounts are created by the local seed command (`npm run db:seed`). They are for the locally running application, not the frontend-only Vercel deployment.
+
 All demo users use password `Password123!`.
 
 | Role | Email |
@@ -329,7 +333,9 @@ GET    /api/health/ready
 
 ## Deployment status
 
-The repository is currently optimized for reproducible local development and CI rather than advertising a temporary demo environment. A durable AWS deployment and public demo URL are intentionally part of Stage 3 so infrastructure can be versioned and reviewed instead of configured manually.
+The full application works locally with its API, database, and Redis services running. Only the frontend has been hosted on Vercel; the backend is not publicly deployed, so that frontend-only deployment does not support a working sign-in or end-to-end demo.
+
+Use the [local setup](#quick-start), [seeded demo accounts](#demo-users), and [screenshots](#product-screenshots) to explore the project. Public full-stack hosting remains a future milestone; no cloud deployment is required to review or run the local project.
 
 ## Stage 3 improvements
 
